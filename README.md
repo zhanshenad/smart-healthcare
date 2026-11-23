@@ -9,7 +9,8 @@
 - 通义千问对话
 - Flux 流式输出
 - ChatMemory + MongoDB 会话记忆
-- `@Tool` 预约、取消预约、计算器
+- Token 预算窗口 + 旧对话摘要压缩
+- `@Tool` 预约、取消预约、日期时间、计算器
 - RAG 文档检索
 - MyBatis-Plus + MySQL 预约数据
 
@@ -152,6 +153,9 @@ MongoDB 使用 `27018`，避免与本机默认 `27017` 冲突。
 - `PINECONE_API_KEY`：可选
   - 未配置时使用 `InMemoryEmbeddingStore`
   - 内存向量库在重启后数据丢失
+- `xiaozhi.memory.max-tokens`：单会话 token 预算，默认 200000
+- `xiaozhi.memory.keep-recent-turns`：压缩时保留的最近对话轮数，默认 8
+- `xiaozhi.memory.summary-enabled`：是否启用摘要压缩，默认 true
 - MongoDB 默认连接 `localhost:27018`
 
 ## 说明

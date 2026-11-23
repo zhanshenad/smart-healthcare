@@ -1,6 +1,7 @@
 package com.atguigu.java.ai.langchain4j;
 
 import dev.langchain4j.data.document.Document;
+import dev.langchain4j.data.document.DocumentSplitter;
 import dev.langchain4j.data.document.loader.FileSystemDocumentLoader;
 import dev.langchain4j.data.embedding.Embedding;
 import dev.langchain4j.data.segment.TextSegment;
@@ -19,6 +20,9 @@ public class EmbeddingTest {
 
     @Autowired
     private EmbeddingModel embeddingModel;
+
+    @Autowired
+    private DocumentSplitter documentSplitter;
 
     @Test
     public void testEmbeddingModel(){
@@ -95,6 +99,7 @@ public class EmbeddingTest {
                 .builder()
                 .embeddingStore(embeddingStore)
                 .embeddingModel(embeddingModel)
+                .documentSplitter(documentSplitter)
                 .build()
                 .ingest(documents);
     }

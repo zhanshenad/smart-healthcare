@@ -1,6 +1,5 @@
 package com.atguigu.java.ai.langchain4j.controller;
 
-import com.atguigu.java.ai.langchain4j.XiaozhiApp;
 import com.atguigu.java.ai.langchain4j.assistant.XiaozhiAgent;
 import com.atguigu.java.ai.langchain4j.bean.ChatForm;
 import dev.langchain4j.data.message.ChatMessage;
@@ -24,7 +23,7 @@ public class XiaozhiController {
     private XiaozhiAgent xiaozhiAgent;
 
     @Operation(summary = "对话")
-    @PostMapping(value = "/chat", produces = "text/stream;charset=utf-8")
+    @PostMapping(value = "/chat", produces = "text/plain;charset=UTF-8")
     //flux流式返回，前端可以实时接收消息
     public Flux<String> chat(@RequestBody ChatForm chatForm){
         return xiaozhiAgent.chat(chatForm.getMemoryId(), chatForm.getMessage());

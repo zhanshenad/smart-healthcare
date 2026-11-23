@@ -2,6 +2,7 @@ package com.atguigu.java.ai.langchain4j;
 
 import dev.langchain4j.community.model.dashscope.QwenTokenizer;
 import dev.langchain4j.data.document.Document;
+import dev.langchain4j.data.document.DocumentSplitter;
 import dev.langchain4j.data.document.loader.FileSystemDocumentLoader;
 import dev.langchain4j.data.document.parser.TextDocumentParser;
 import dev.langchain4j.data.document.parser.apache.pdfbox.ApachePdfBoxDocumentParser;
@@ -13,6 +14,7 @@ import dev.langchain4j.model.embedding.onnx.HuggingFaceTokenizer;
 import dev.langchain4j.store.embedding.EmbeddingStoreIngestor;
 import dev.langchain4j.store.embedding.inmemory.InMemoryEmbeddingStore;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 
 import java.nio.file.FileSystems;
@@ -21,6 +23,9 @@ import java.util.List;
 
 @SpringBootTest
 public class RAGTest {
+
+    @Autowired
+    private DocumentSplitter documentSplitter;
 
     @Test
     public void testReadDocument() {
@@ -78,7 +83,11 @@ public class RAGTest {
         //DocumentByParagraphSplitter(DocumentByLineSplitter(DocumentBySentenceSplitter(DocumentByWordSplitter)))
         //2、文本向量化：使用一个LangChain4j内置的轻量化向量模型对每个文本片段进行向量化
         //3、将原始文本和向量存储到向量数据库中(InMemoryEmbeddingStore)
-        EmbeddingStoreIngestor.ingest(document, embeddingStore);
+        EmbeddingStoreIngestor.builder()
+                .embeddingStore(embeddingStore)
+                .documentSplitter(documentSplitter)
+                .build()
+                .ingest(document);
         //查看向量数据库内容
         System.out.println(embeddingStore);
     }

@@ -120,9 +120,9 @@ const sendRequest = (message) => {
   axios
     .post(
       '/api/medical/chat',
-      { memoryId: uuid.value, message },
+      { memoryId: String(uuid.value), message },
       {
-        responseType: 'stream', // 必须为合法值 "text"
+        responseType: 'stream', // 按流读取，逐步拼接响应文本
         onDownloadProgress: (e) => {
           const fullText = e.event.target.responseText // 累积的完整文本
           let newText = fullText.substring(lastMsg.content.length)

@@ -13,11 +13,11 @@ import static dev.langchain4j.service.spring.AiServiceWiringMode.EXPLICIT;
         /*chatModel = "qwenChatModel",*/
         streamingChatModel= "qwenStreamingChatModel",
         chatMemoryProvider = "chatMemoryProviderXiaozhi",
-        tools = "appointmentTools",
+        tools = {"appointmentTools", "dateTools"},
         contentRetriever = "contentRetrieverXiaozhiPincone"
 )
 public interface XiaozhiAgent {
 
     @SystemMessage(fromResource = "zhaozhi-prompt-template.txt")
-    Flux<String> chat(@MemoryId Long memoryId, @UserMessage String userMessage);
+    Flux<String> chat(@MemoryId String memoryId, @UserMessage String userMessage);
 }

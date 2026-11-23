@@ -5,51 +5,66 @@ import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.ChatMessageDeserializer;
 import dev.langchain4j.data.message.ChatMessageSerializer;
 import dev.langchain4j.store.memory.chat.ChatMemoryStore;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.data.mongodb.core.query.Update;
 import org.springframework.stereotype.Component;
 
-import java.util.LinkedList;
+import java.util.ArrayList;
 import java.util.List;
 
+@Slf4j
 @Component
 public class MongoChatMemoryStore implements ChatMemoryStore {
 
-    @Autowired
-    private MongoTemplate mongoTemplate;
+    private final MongoTemplate mongoTemplate;
+
+    public MongoChatMemoryStore(MongoTemplate mongoTemplate) {
+        this.mongoTemplate = mongoTemplate;
+    }
 
     @Override
     public List<ChatMessage> getMessages(Object memoryId) {
-        Criteria criteria = Criteria.where("memoryId").is(memoryId);
-        Query query = new Query(criteria);
-
-        ChatMessages chatMessages = mongoTemplate.findOne(query, ChatMessages.class);
+        ChatMessages chatMessages = mongoTemplate.findOne(query(memoryId), ChatMessages.class);
         if (chatMessages == null) {
-            return new LinkedList<>();
+            return new ArrayList<>();
         }
-        String contentJson = chatMessages.getContent();
-        return ChatMessageDeserializer.messagesFromJson(contentJson);
+        return new ArrayList<>(ChatMessageDeserializer.messagesFromJson(chatMessages.getContent()));
     }
 
     @Override
     public void updateMessages(Object memoryId, List<ChatMessage> list) {
-        Criteria criteria = Criteria.where("memoryId").is(memoryId);
-        Query query = new Query(criteria);
-        Update update = new Update();
+        String id = normalize(memoryId);
+        Update update = new Update()
+                .set("memoryId", id)
+                .set("content", ChatMessageSerializer.messagesToJson(list));
 
-        update.set("content", ChatMessageSerializer.messagesToJson(list));
-
-        //修改或新增
-        mongoTemplate.upsert(query, update, ChatMessages.class);
+        try {
+            mongoTemplate.upsert(query(id), update, ChatMessages.class);
+        } catch (DuplicateKeyException e) {
+            // 首次并发写入时可能同时触发 upsert，唯一索引会让其中一个失败，这里重试一次
+            log.debug("聊天记录并发写入冲突，重试 memoryId={}", id);
+            mongoTemplate.upsert(query(id), update, ChatMessages.class);
+        }
     }
 
     @Override
     public void deleteMessages(Object memoryId) {
-        Criteria criteria = Criteria.where("memoryId").is(memoryId);
-        Query query = new Query(criteria);
-        mongoTemplate.remove(query, ChatMessages.class);
+        mongoTemplate.remove(query(memoryId), ChatMessages.class);
+    }
+
+    private Query query(Object memoryId) {
+        return query(normalize(memoryId));
+    }
+
+    private Query query(String memoryId) {
+        return Query.query(Criteria.where("memoryId").is(memoryId));
+    }
+
+    private String normalize(Object memoryId) {
+        return String.valueOf(memoryId);
     }
 }
