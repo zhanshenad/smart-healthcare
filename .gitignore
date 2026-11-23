@@ -1,0 +1,40 @@
+# 本地说明与脚本，不提交
+环境说明.md
+依赖版本报告.md
+run-backend.ps1
+run-frontend.ps1
+
+# Java / Maven
+target/
+*.class
+*.jar
+*.war
+hs_err_pid*.log
+replay_pid*.log
+dependency-tree.txt
+
+# Node
+node_modules/
+dist/
+.vite/
+
+# IDE / OS
+.idea/
+*.iml
+.vscode/
+.DS_Store
+
+# Secrets
+.env
+*.env
+application-local.properties
+application-local.yml
+
+# Runtime data
+infra/**/data/
+logs/
+*.log
+uploads/
+
+# Tool artifacts
+.github/modernize/
