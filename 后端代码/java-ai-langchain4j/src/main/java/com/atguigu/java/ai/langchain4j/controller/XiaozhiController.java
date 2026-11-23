@@ -15,9 +15,9 @@ import reactor.core.publisher.Flux;
 
 import java.util.List;
 
-@Tag(name = "硅谷小智")
+@Tag(name = "智慧医疗")
 @RestController
-@RequestMapping("/xiaozhi")
+@RequestMapping("/medical")
 public class XiaozhiController {
 
     @Autowired

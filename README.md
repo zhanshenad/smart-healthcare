@@ -1,6 +1,8 @@
-# 小智医疗
+# 智慧医疗
 
-基于 LangChain4j 的智能医疗问答项目，包含流式对话、ChatMemory 持久化、工具调用和 RAG 知识库检索。
+面向医疗场景的智能问答与预约助手，包含流式对话、ChatMemory 持久化、工具调用和 RAG 知识库检索。
+
+> 智能问诊 · 预约挂号 · 健康咨询
 
 ## 功能
 
@@ -54,7 +56,7 @@
 ├── 后端代码/
 │   └── java-ai-langchain4j/
 └── 前端代码/
-    └── xiaozhi-ui/
+    └── smart-healthcare-ui/
 ```
 
 ## 环境要求
@@ -107,7 +109,7 @@ mvn spring-boot:run
 ### 4. 启动前端
 
 ```powershell
-cd 前端代码\xiaozhi-ui
+cd 前端代码\smart-healthcare-ui
 npm install
 npm run dev
 ```
