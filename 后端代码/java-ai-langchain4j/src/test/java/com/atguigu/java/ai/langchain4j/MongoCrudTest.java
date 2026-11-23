@@ -1,6 +1,6 @@
 package com.atguigu.java.ai.langchain4j;
 
-import com.atguigu.java.ai.langchain4j.bean.ChatMessages;
+import com.atguigu.java.ai.langchain4j.entity.ChatMessages;
 import org.bson.types.ObjectId;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;

@@ -1,11 +1,11 @@
-package com.atguigu.java.ai.langchain4j.memory;
+package com.atguigu.java.ai.langchain4j.store;
 
+import com.atguigu.java.ai.langchain4j.entity.ConversationSummary;
+import java.time.Instant;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.stereotype.Component;
-
-import java.time.Instant;
 
 @Component
 public class MongoConversationSummaryStore {

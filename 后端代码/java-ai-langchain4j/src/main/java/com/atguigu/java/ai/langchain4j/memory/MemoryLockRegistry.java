@@ -1,10 +1,9 @@
 package com.atguigu.java.ai.langchain4j.memory;
 
-import org.springframework.stereotype.Component;
-
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.locks.ReentrantLock;
+import org.springframework.stereotype.Component;
 
 @Component
 public class MemoryLockRegistry {

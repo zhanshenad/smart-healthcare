@@ -13,13 +13,12 @@ import dev.langchain4j.data.segment.TextSegment;
 import dev.langchain4j.model.embedding.onnx.HuggingFaceTokenizer;
 import dev.langchain4j.store.embedding.EmbeddingStoreIngestor;
 import dev.langchain4j.store.embedding.inmemory.InMemoryEmbeddingStore;
-import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-
 import java.nio.file.FileSystems;
 import java.nio.file.PathMatcher;
 import java.util.List;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
 
 @SpringBootTest
 public class RAGTest {
@@ -136,6 +135,5 @@ public class RAGTest {
         int count = tokenizer.estimateTokenCountInMessage(userMessage);
         System.out.println("token长度：" + count);
     }
-
 
 }

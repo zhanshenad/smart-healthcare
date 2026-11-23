@@ -5,6 +5,10 @@
         <img src="@/assets/logo.png" alt="智慧医疗" width="160" height="160" />
         <span class="logo-text">智慧医疗 AI 助手</span>
       </div>
+      <div v-if="user" class="user-section">
+        <span class="user-name">{{ user.nickname || user.phone }}</span>
+        <el-button text size="small" @click="logout">退出</el-button>
+      </div>
       <el-button class="new-chat-button" @click="newChat">
         <i class="fa-solid fa-plus"></i>
         &nbsp;新会话
@@ -59,8 +63,16 @@
 
 <script setup>
 import { onMounted, ref, watch } from 'vue'
-import axios from 'axios'
 import { v4 as uuidv4 } from 'uuid'
+import http from '@/api/http'
+
+const props = defineProps({
+  user: {
+    type: Object,
+    default: null,
+  },
+})
+const emit = defineEmits(['logout'])
 
 const messaggListRef = ref()
 const isSending = ref(false)
@@ -117,10 +129,10 @@ const sendRequest = (message) => {
   const lastMsg = messages.value[messages.value.length - 1]
   scrollToBottom()
 
-  axios
+  http
     .post(
-      '/api/medical/chat',
-      { memoryId: String(uuid.value), message },
+      '/medical/chat',
+      { memoryId: uuid.value, message },
       {
         responseType: 'stream', // 按流读取，逐步拼接响应文本
         onDownloadProgress: (e) => {
@@ -147,21 +159,17 @@ const sendRequest = (message) => {
 
 // 初始化 UUID
 const initUUID = () => {
-  let storedUUID = localStorage.getItem('user_uuid')
+  let storedUUID = localStorage.getItem('chat_memory_id')
   if (!storedUUID) {
-    storedUUID = uuidToNumber(uuidv4())
-    localStorage.setItem('user_uuid', storedUUID)
+    storedUUID = uuidv4()
+    localStorage.setItem('chat_memory_id', storedUUID)
   }
   uuid.value = storedUUID
 }
 
-const uuidToNumber = (uuid) => {
-  let number = 0
-  for (let i = 0; i < uuid.length && i < 6; i++) {
-    const hexValue = uuid[i]
-    number = number * 16 + (parseInt(hexValue, 16) || 0)
-  }
-  return number % 1000000
+const logout = () => {
+  localStorage.removeItem('chat_memory_id')
+  emit('logout')
 }
 
 // 转换特殊字符
@@ -175,9 +183,7 @@ const convertStreamOutput = (output) => {
 }
 
 const newChat = () => {
-  // 这里添加新会话的逻辑
-  console.log('开始新会话')
-  localStorage.removeItem('user_uuid')
+  localStorage.removeItem('chat_memory_id')
   window.location.reload()
 }
 
@@ -207,6 +213,23 @@ const newChat = () => {
   font-size: 18px;
   font-weight: bold;
   margin-top: 10px;
+}
+
+.user-section {
+  width: 100%;
+  margin-top: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: #475569;
+  font-size: 13px;
+}
+
+.user-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .new-chat-button {

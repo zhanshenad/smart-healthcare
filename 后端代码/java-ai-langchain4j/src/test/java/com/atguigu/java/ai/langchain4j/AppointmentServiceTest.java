@@ -15,6 +15,7 @@ class AppointmentServiceTest {
     @Test
     void testGetOne() {
         Appointment appointment = new Appointment();
+        appointment.setUserId(0L);
         appointment.setUsername("张三");
         appointment.setIdCard("123456789012345678");
         appointment.setDepartment("内科");
@@ -29,6 +30,7 @@ class AppointmentServiceTest {
     @Test
     void testSave() {
         Appointment appointment = new Appointment();
+        appointment.setUserId(0L);
         appointment.setUsername("张三");
         appointment.setIdCard("123456789012345678");
         appointment.setDepartment("内科");

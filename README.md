@@ -8,9 +8,12 @@
 
 - 通义千问对话
 - Flux 流式输出
+- 手机号验证码登录，JWT access/refresh token
+- 会话归属校验，不能使用他人的 memoryId
 - ChatMemory + MongoDB 会话记忆
 - Token 预算窗口 + 旧对话摘要压缩
 - `@Tool` 预约、取消预约、日期时间、计算器
+- 预约记录绑定当前登录用户
 - RAG 文档检索
 - MyBatis-Plus + MySQL 预约数据
 
@@ -26,6 +29,8 @@
 | LangChain4j | 1.0.0-beta3 |
 | LangChain4j Community | 1.0.0-beta3 |
 | MyBatis-Plus | 3.5.11 |
+| Spring Security | 6.2.4 |
+| JJWT | 0.12.6 |
 | MySQL Connector | 8.3.0 |
 | Knife4j | 4.3.0 |
 | PDFBox | 2.0.32 |
@@ -53,11 +58,32 @@
 ├── README.md
 ├── infra/
 │   ├── docker-compose.yml
-│   └── mysql/init.sql
+│   └── mysql/
+│       ├── init.sql
+│       └── migrate-phase2.sql
 ├── 后端代码/
 │   └── java-ai-langchain4j/
 └── 前端代码/
     └── smart-healthcare-ui/
+```
+
+后端按层组织：
+
+```text
+com.atguigu.java.ai.langchain4j
+├── controller    接口入口
+├── service       业务逻辑，impl 放实现
+├── mapper        MyBatis-Plus Mapper
+├── entity        数据库表与 MongoDB 文档
+├── dto            请求参数
+├── vo             响应数据
+├── security       JWT、Filter、SecurityContext
+├── config         Spring 配置与配置属性
+├── common         异常、统一响应、公共常量
+├── memory         会话记忆实现
+├── store          MongoDB 存储
+├── tools          LangChain4j 工具
+└── assistant      AiService 接口
 ```
 
 ## 环境要求
@@ -88,9 +114,16 @@ PowerShell 临时设置：
 
 ```powershell
 $env:DASH_SCOPE_API_KEY="sk-..."
+$env:JWT_SECRET="至少32字节的随机字符串"
 ```
 
-不要把 Key 写进 `application.properties`，也不要提交到 Git。
+不要把 Key 写进 `application.properties`，也不要提交到 Git。未设置 `JWT_SECRET` 时会使用开发默认值，生产环境必须覆盖。
+
+本地未接真实短信服务，验证码会打印在后端日志中，例如：
+
+```text
+短信验证码 phone=13800000001 code=123456
+```
 
 ### 3. 启动后端
 
@@ -107,6 +140,25 @@ mvn spring-boot:run
 - API：`http://localhost:8080`
 - Knife4j：`http://localhost:8080/doc.html`
 
+认证接口：
+
+```text
+POST /auth/sms/send        发送验证码
+POST /auth/login/sms       验证码登录，首次自动注册
+POST /auth/login/password  密码登录
+POST /auth/password/set    设置密码，需要 Bearer Token
+POST /auth/refresh         刷新 Token
+GET  /auth/me              当前用户，需要 Bearer Token
+```
+
+业务接口 `/medical/**` 需要携带：
+
+```text
+Authorization: Bearer <accessToken>
+```
+
+聊天请求里的 `memoryId` 必须是 UUID，前端会自动生成并保存在本地。
+
 ### 4. 启动前端
 
 ```powershell
@@ -116,6 +168,8 @@ npm run dev
 ```
 
 前端地址：`http://localhost:5173`
+
+首次打开会进入登录页，输入手机号后查看后端日志中的验证码。首次登录自动注册，并可选择设置密码。
 
 Vite 已配置 `/api` 代理到 `http://localhost:8080`。
 
@@ -131,6 +185,18 @@ Vite 已配置 `/api` 代理到 `http://localhost:8080`。
 ```
 
 初始化脚本：`infra/mysql/init.sql`
+
+已有旧数据库（数据卷已存在）需要执行一次 Phase 2 迁移：
+
+```powershell
+docker exec -i xiaozhi-mysql mysql -uroot -p123456 < infra/mysql/migrate-phase2.sql
+```
+
+主要表：
+
+- `users`：用户、手机号、BCrypt 密码
+- `chat_sessions`：`memoryId` 与 `userId` 的归属关系
+- `appointment`：预约记录，按 `user_id` 隔离
 
 ### MongoDB
 
@@ -156,6 +222,10 @@ MongoDB 使用 `27018`，避免与本机默认 `27017` 冲突。
 - `xiaozhi.memory.max-tokens`：单会话 token 预算，默认 200000
 - `xiaozhi.memory.keep-recent-turns`：压缩时保留的最近对话轮数，默认 8
 - `xiaozhi.memory.summary-enabled`：是否启用摘要压缩，默认 true
+- `JWT_SECRET`：JWT 签名密钥，至少 32 字节，生产必须覆盖
+- `app.jwt.access-token-ttl-minutes`：access token 有效期，默认 30 分钟
+- `app.jwt.refresh-token-ttl-days`：refresh token 有效期，默认 7 天
+- `app.sms.debug`：是否把验证码打印到日志，本地默认 true
 - MongoDB 默认连接 `localhost:27018`
 
 ## 说明

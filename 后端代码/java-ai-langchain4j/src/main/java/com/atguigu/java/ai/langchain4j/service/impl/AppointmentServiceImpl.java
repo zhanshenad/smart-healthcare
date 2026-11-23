@@ -18,6 +18,7 @@ public class AppointmentServiceImpl extends ServiceImpl<AppointmentMapper, Appoi
     @Override
     public Appointment getOne(Appointment appointment) {
         LambdaQueryWrapper<Appointment> queryWrapper = new LambdaQueryWrapper<>();
+        queryWrapper.eq(Appointment::getUserId, appointment.getUserId());
         queryWrapper.eq(Appointment::getUsername, appointment.getUsername());
         queryWrapper.eq(Appointment::getIdCard, appointment.getIdCard());
         queryWrapper.eq(Appointment::getDepartment, appointment.getDepartment());

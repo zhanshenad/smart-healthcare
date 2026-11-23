@@ -9,11 +9,10 @@ import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.memory.chat.MessageWindowChatMemory;
 import dev.langchain4j.model.chat.response.ChatResponse;
 import dev.langchain4j.service.AiServices;
+import java.util.Arrays;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-
-import java.util.Arrays;
 
 @SpringBootTest
 public class ChatMemoryTest {
@@ -30,7 +29,6 @@ public class ChatMemoryTest {
         String answer2 = assistant.chat("我是谁");
         System.out.println(answer2);
     }
-
 
     @Autowired
     private QwenChatModel qwenChatModel;
@@ -70,7 +68,6 @@ public class ChatMemoryTest {
 
     }
 
-
     @Autowired
     private MemoryChatAssistant memoryChatAssistant;
     @Test
@@ -82,7 +79,6 @@ public class ChatMemoryTest {
         System.out.println(answer2);
 
     }
-
 
     @Autowired
     private SeparateChatAssistant separateChatAssistant;

@@ -1,12 +1,11 @@
-package com.atguigu.java.ai.langchain4j.memory;
+package com.atguigu.java.ai.langchain4j.entity;
 
+import java.time.Instant;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
-
-import java.time.Instant;
 
 @Data
 @NoArgsConstructor

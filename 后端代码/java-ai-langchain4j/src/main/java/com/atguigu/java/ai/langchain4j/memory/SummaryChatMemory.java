@@ -1,16 +1,17 @@
 package com.atguigu.java.ai.langchain4j.memory;
 
+import com.atguigu.java.ai.langchain4j.service.SummaryService;
+import com.atguigu.java.ai.langchain4j.store.MongoConversationSummaryStore;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.memory.ChatMemory;
 import dev.langchain4j.model.Tokenizer;
 import dev.langchain4j.store.memory.chat.ChatMemoryStore;
-import lombok.extern.slf4j.Slf4j;
-
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.locks.ReentrantLock;
+import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 public class SummaryChatMemory implements ChatMemory {

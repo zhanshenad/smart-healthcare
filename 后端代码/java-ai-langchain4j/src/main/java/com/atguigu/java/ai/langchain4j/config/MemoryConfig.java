@@ -1,11 +1,10 @@
 package com.atguigu.java.ai.langchain4j.config;
 
 import com.atguigu.java.ai.langchain4j.memory.MemoryLockRegistry;
-import com.atguigu.java.ai.langchain4j.memory.MemoryProperties;
-import com.atguigu.java.ai.langchain4j.memory.MongoConversationSummaryStore;
 import com.atguigu.java.ai.langchain4j.memory.SummaryChatMemory;
-import com.atguigu.java.ai.langchain4j.memory.SummaryService;
+import com.atguigu.java.ai.langchain4j.service.SummaryService;
 import com.atguigu.java.ai.langchain4j.store.MongoChatMemoryStore;
+import com.atguigu.java.ai.langchain4j.store.MongoConversationSummaryStore;
 import dev.langchain4j.memory.chat.ChatMemoryProvider;
 import dev.langchain4j.model.Tokenizer;
 import dev.langchain4j.model.embedding.onnx.HuggingFaceTokenizer;

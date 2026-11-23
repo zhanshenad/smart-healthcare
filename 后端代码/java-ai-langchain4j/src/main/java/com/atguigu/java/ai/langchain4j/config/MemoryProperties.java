@@ -1,4 +1,4 @@
-package com.atguigu.java.ai.langchain4j.memory;
+package com.atguigu.java.ai.langchain4j.config;
 
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;

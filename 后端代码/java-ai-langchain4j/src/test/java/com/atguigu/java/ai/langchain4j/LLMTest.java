@@ -6,11 +6,10 @@ import dev.langchain4j.data.image.Image;
 import dev.langchain4j.model.ollama.OllamaChatModel;
 import dev.langchain4j.model.openai.OpenAiChatModel;
 import dev.langchain4j.model.output.Response;
+import java.net.URI;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-
-import java.net.URI;
 
 // @SpringBootTest
 public class LLMTest {
@@ -28,7 +27,6 @@ public class LLMTest {
         System.out.println(answer);
 
     }
-
 
     @Autowired
     private OpenAiChatModel openAiChatModel;
@@ -52,7 +50,6 @@ public class LLMTest {
           System.out.println(model.chat("你是谁？"));
     }
 
-
     /**
      * 通义千问大模型
      */
@@ -65,7 +62,6 @@ public class LLMTest {
         //输出结果
         System.out.println(answer);
     }
-
 
     @Test
     public void testDashScopeWanx(){

@@ -1,4 +1,4 @@
-package com.atguigu.java.ai.langchain4j.bean;
+package com.atguigu.java.ai.langchain4j.entity;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;

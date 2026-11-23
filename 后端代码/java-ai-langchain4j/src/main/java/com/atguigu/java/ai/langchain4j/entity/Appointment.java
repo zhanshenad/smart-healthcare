@@ -13,6 +13,7 @@ public class Appointment {
 
     @TableId(type = IdType.AUTO)
     private Long id;
+    private Long userId;
     private String username;
     private String idCard;
     private String department;

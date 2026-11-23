@@ -1,6 +1,6 @@
 package com.atguigu.java.ai.langchain4j.store;
 
-import com.atguigu.java.ai.langchain4j.bean.ChatMessages;
+import com.atguigu.java.ai.langchain4j.entity.ChatMessages;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
