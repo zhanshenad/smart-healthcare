@@ -14,7 +14,8 @@
 - Token 预算窗口 + 旧对话摘要压缩
 - `@Tool` 预约、取消预约、日期时间、计算器
 - 预约记录绑定当前登录用户
-- RAG 文档检索
+- Milvus 向量库 RAG 文档检索
+- 文档上传、解析、切片、Embedding、幂等入库
 - MyBatis-Plus + MySQL 预约数据
 
 ## 技术栈
@@ -34,6 +35,7 @@
 | MySQL Connector | 8.3.0 |
 | Knife4j | 4.3.0 |
 | PDFBox | 2.0.32 |
+| Milvus | 2.5.10 |
 
 ### 前端
 
@@ -50,6 +52,8 @@
 |---|---|
 | MySQL 8.0 | 3307 |
 | MongoDB 7.0 | 27018 |
+| Milvus 2.5.10 | 19530 |
+| Milvus WebUI | 9091 |
 
 ## 目录结构
 
@@ -96,7 +100,7 @@ com.atguigu.java.ai.langchain4j
 
 ## 快速启动
 
-### 1. 启动 MySQL 和 MongoDB
+### 1. 启动 MySQL、MongoDB 和 Milvus
 
 ```powershell
 docker compose -f infra/docker-compose.yml up -d
@@ -107,6 +111,14 @@ docker compose -f infra/docker-compose.yml up -d
 ```powershell
 docker ps --filter "name=xiaozhi"
 ```
+
+Milvus 使用本地存储，不依赖 MinIO。启动后可以访问自带 WebUI：
+
+```text
+http://localhost:9091/webui
+```
+
+也可以使用 Attu 2.5 连接 `127.0.0.1:19530`，认证选择 None。
 
 ### 2. 配置 API Key
 
@@ -159,6 +171,24 @@ Authorization: Bearer <accessToken>
 
 聊天请求里的 `memoryId` 必须是 UUID，前端会自动生成并保存在本地。
 
+知识库接口：
+
+```text
+POST /medical/knowledge/ingest    上传并入库文档，multipart/form-data
+GET  /medical/knowledge/documents 查看文档入库状态
+```
+
+上传示例：
+
+```powershell
+curl -X POST http://localhost:8080/medical/knowledge/ingest `
+  -H "Authorization: Bearer <accessToken>" `
+  -F "file=@E:/knowledge/医院信息.md" `
+  -F "department=神经内科"
+```
+
+当前支持 `.md`、`.txt`、`.pdf`。PDF 使用 PDFBox 抽取文本；MinerU 解析作为后续增强。
+
 ### 4. 启动前端
 
 ```powershell
@@ -186,10 +216,12 @@ Vite 已配置 `/api` 代理到 `http://localhost:8080`。
 
 初始化脚本：`infra/mysql/init.sql`
 
-已有旧数据库（数据卷已存在）需要执行一次 Phase 2 迁移：
+已有旧数据库（数据卷已存在）按阶段执行迁移：
 
 ```powershell
-docker exec -i xiaozhi-mysql mysql -uroot -p123456 < infra/mysql/migrate-phase2.sql
+$env:MYSQL_PWD="你的MySQL密码"
+docker exec -i -e MYSQL_PWD xiaozhi-mysql mysql -uroot < infra/mysql/migrate-phase2.sql
+docker exec -i -e MYSQL_PWD xiaozhi-mysql mysql -uroot < infra/mysql/migrate-phase3.sql
 ```
 
 主要表：
@@ -197,6 +229,8 @@ docker exec -i xiaozhi-mysql mysql -uroot -p123456 < infra/mysql/migrate-phase2.
 - `users`：用户、手机号、BCrypt 密码
 - `chat_sessions`：`memoryId` 与 `userId` 的归属关系
 - `appointment`：预约记录，按 `user_id` 隔离
+- `knowledge_documents`：知识库文档、doc_hash、入库状态
+- `knowledge_chunks`：文档切片、chunk_id、content_hash
 
 ### MongoDB
 
@@ -216,9 +250,13 @@ MongoDB 使用 `27018`，避免与本机默认 `27017` 冲突。
 ```
 
 - `DASH_SCOPE_API_KEY`：百炼 API Key
-- `PINECONE_API_KEY`：可选
-  - 未配置时使用 `InMemoryEmbeddingStore`
-  - 内存向量库在重启后数据丢失
+- `xiaozhi.rag.embedding-dimension`：向量维度，默认 `1024`，必须与 Milvus collection 一致
+- `xiaozhi.rag.chunk-size`：切片长度，默认 `500`
+- `xiaozhi.rag.chunk-overlap`：切片重叠，默认 `80`
+- `xiaozhi.rag.milvus.host`：Milvus 地址，默认 `localhost`
+- `xiaozhi.rag.milvus.port`：Milvus gRPC 端口，默认 `19530`
+- `xiaozhi.rag.milvus.database-name`：Milvus 数据库，默认 `default`
+- `xiaozhi.rag.milvus.collection-name`：向量集合名，默认 `smart_healthcare_chunks`
 - `xiaozhi.memory.max-tokens`：单会话 token 预算，默认 200000
 - `xiaozhi.memory.keep-recent-turns`：压缩时保留的最近对话轮数，默认 8
 - `xiaozhi.memory.summary-enabled`：是否启用摘要压缩，默认 true

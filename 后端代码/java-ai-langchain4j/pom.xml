@@ -113,7 +113,7 @@
         </dependency>
         <dependency>
             <groupId>dev.langchain4j</groupId>
-            <artifactId>langchain4j-pinecone</artifactId>
+            <artifactId>langchain4j-milvus</artifactId>
         </dependency>
         <!--流式输出-->
         <dependency>

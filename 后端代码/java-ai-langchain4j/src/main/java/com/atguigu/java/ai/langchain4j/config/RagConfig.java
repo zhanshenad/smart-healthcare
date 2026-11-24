@@ -8,9 +8,8 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 public class RagConfig {
 
-    // 文档切片配置
     @Bean
-    public DocumentSplitter documentSplitter() {
-        return DocumentSplitters.recursive(500, 80);
+    public DocumentSplitter documentSplitter(RagProperties properties) {
+        return DocumentSplitters.recursive(properties.getChunkSize(), properties.getChunkOverlap());
     }
 }

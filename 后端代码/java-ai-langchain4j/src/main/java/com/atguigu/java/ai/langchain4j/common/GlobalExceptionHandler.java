@@ -7,6 +7,7 @@ import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 @Slf4j
 @RestControllerAdvice
@@ -32,6 +33,12 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponse<Void>> handleUnreadable(HttpMessageNotReadableException e) {
         return ResponseEntity.badRequest()
                 .body(new ApiResponse<>(400, "请求体格式不正确", null));
+    }
+
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMaxUploadSize(MaxUploadSizeExceededException e) {
+        return ResponseEntity.badRequest()
+                .body(new ApiResponse<>(400, "上传文件过大，单个文件不能超过 50MB", null));
     }
 
     @ExceptionHandler(Exception.class)

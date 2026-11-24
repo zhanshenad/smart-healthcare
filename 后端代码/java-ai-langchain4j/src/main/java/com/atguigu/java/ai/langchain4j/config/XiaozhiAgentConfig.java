@@ -19,7 +19,7 @@ public class XiaozhiAgentConfig {
     }
 
     @Bean
-    ContentRetriever contentRetrieverXiaozhiPincone() {
+    ContentRetriever contentRetrieverXiaozhiMilvus() {
         return EmbeddingStoreContentRetriever.builder()
                 .embeddingModel(embeddingModel)
                 .embeddingStore(embeddingStore)

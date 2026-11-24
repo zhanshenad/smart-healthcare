@@ -35,13 +35,13 @@ public class EmbeddingTest {
     private EmbeddingStore embeddingStore;
 
     /**
-     * 将文本转换成向量，然后存储到pinecone中
+     * 将文本转换成向量，然后存储到 Milvus 中
      *
      * 参考：
      * https://docs.langchain4j.dev/tutorials/embedding-stores
      */
     @Test
-    public void testPineconeEmbeded() {
+    public void testMilvusEmbedded() {
 
         //将文本转换成向量
         TextSegment segment1 = TextSegment.from("我喜欢羽毛球");
@@ -55,7 +55,7 @@ public class EmbeddingTest {
     }
 
     /**
-     * Pinecone-相似度匹配
+     * Milvus-相似度匹配
      */
     @Test
     public void embeddingSearch() {
