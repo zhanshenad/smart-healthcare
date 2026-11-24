@@ -7,24 +7,29 @@ import com.atguigu.java.ai.langchain4j.entity.KnowledgeChunk;
 import com.atguigu.java.ai.langchain4j.entity.KnowledgeDocument;
 import com.atguigu.java.ai.langchain4j.mapper.KnowledgeChunkMapper;
 import com.atguigu.java.ai.langchain4j.mapper.KnowledgeDocumentMapper;
+import com.atguigu.java.ai.langchain4j.rag.HybridChunk;
+import com.atguigu.java.ai.langchain4j.rag.MilvusHybridStore;
+import com.atguigu.java.ai.langchain4j.service.chunking.StructureAwareChunker;
+import com.atguigu.java.ai.langchain4j.service.parser.MarkdownConversionService;
 import com.atguigu.java.ai.langchain4j.service.parser.ParsedDocument;
 import com.atguigu.java.ai.langchain4j.vo.KnowledgeIngestResult;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
-import dev.langchain4j.data.document.Document;
-import dev.langchain4j.data.document.DocumentSplitter;
 import dev.langchain4j.data.document.Metadata;
 import dev.langchain4j.data.embedding.Embedding;
 import dev.langchain4j.data.segment.TextSegment;
 import dev.langchain4j.model.embedding.EmbeddingModel;
 import dev.langchain4j.model.output.Response;
-import dev.langchain4j.store.embedding.EmbeddingStore;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -38,40 +43,51 @@ public class DocumentIngestionService {
     private static final String STATUS_READY = "READY";
     private static final String STATUS_FAILED = "FAILED";
 
-    // LangChain4j 自建 Milvus 集合的主键是 VarChar(36)，这里留 4 位余量
+    // 主键截断到 32 位，留出足够余量
     private static final int MILVUS_ID_MAX_LENGTH = 32;
 
     private final DocumentParseService parseService;
-    private final DocumentSplitter documentSplitter;
+    private final MarkdownConversionService conversionService;
+    private final StructureAwareChunker structureAwareChunker;
     private final EmbeddingModel embeddingModel;
-    private final EmbeddingStore<TextSegment> embeddingStore;
+    private final MilvusHybridStore hybridStore;
+    private final KnowledgeChunkWriter chunkWriter;
     private final KnowledgeDocumentMapper documentMapper;
     private final KnowledgeChunkMapper chunkMapper;
     private final RagProperties ragProperties;
 
     public DocumentIngestionService(DocumentParseService parseService,
-                                    DocumentSplitter documentSplitter,
+                                    MarkdownConversionService conversionService,
+                                    StructureAwareChunker structureAwareChunker,
                                     EmbeddingModel embeddingModel,
-                                    EmbeddingStore<TextSegment> embeddingStore,
+                                    MilvusHybridStore hybridStore,
+                                    KnowledgeChunkWriter chunkWriter,
                                     KnowledgeDocumentMapper documentMapper,
                                     KnowledgeChunkMapper chunkMapper,
                                     RagProperties ragProperties) {
         this.parseService = parseService;
-        this.documentSplitter = documentSplitter;
+        this.conversionService = conversionService;
+        this.structureAwareChunker = structureAwareChunker;
         this.embeddingModel = embeddingModel;
-        this.embeddingStore = embeddingStore;
+        this.hybridStore = hybridStore;
+        this.chunkWriter = chunkWriter;
         this.documentMapper = documentMapper;
         this.chunkMapper = chunkMapper;
         this.ragProperties = ragProperties;
     }
 
     public KnowledgeIngestResult ingest(Path file, String originalName, String department) {
+        return ingest(file, originalName, department, false);
+    }
+
+    public KnowledgeIngestResult ingest(Path file, String originalName,
+                                        String department, boolean force) {
         String source = normalizeSource(originalName);
         String docKey = HashUtils.sha256(source + "|" + (department == null ? "" : department));
         String docHash = hashFile(file);
 
         KnowledgeDocument document = findByDocKey(docKey);
-        if (document != null
+        if (!force && document != null
                 && docHash.equals(document.getDocHash())
                 && STATUS_READY.equals(document.getStatus())) {
             log.info("文档未变化，跳过入库，docKey={}, source={}", docKey, source);
@@ -82,8 +98,14 @@ public class DocumentIngestionService {
                 source, docTypeOf(file));
 
         List<String> chunkIds = List.of();
+        boolean dbReplaced = false;
         try {
             ParsedDocument parsed = parseService.parse(file);
+            parsed = ensureTitle(parsed, source);
+            parsed = conversionService.convert(file, parsed);
+            if (parsed.markdown() == null || parsed.markdown().isBlank()) {
+                throw ApiException.badRequest("文档解析结果为空，可能是扫描件或加密文件");
+            }
             updateParsedDocument(document, parsed);
 
             List<TextSegment> chunks = split(parsed, docKey, source, department, docHash);
@@ -95,10 +117,17 @@ public class DocumentIngestionService {
                     .map(chunk -> chunk.metadata().getString("chunk_id"))
                     .toList();
 
-            List<Embedding> embeddings = embed(chunks);
-            removeOldChunks(document);
-            insertChunkRows(document, docKey, chunks);
-            embeddingStore.addAll(chunkIds, embeddings, chunks);
+            List<TextSegment> indexedChunks = chunks.stream()
+                    .filter(chunk -> !"parent".equals(chunk.metadata().getString("role")))
+                    .toList();
+            List<Embedding> embeddings = embed(indexedChunks);
+            List<HybridChunk> hybridChunks = toHybridChunks(indexedChunks, embeddings);
+            List<String> staleChunkIds = staleChunkIds(document, chunkIds);
+
+            hybridStore.upsert(hybridChunks);
+            chunkWriter.replace(document.getId(), docKey, chunks);
+            dbReplaced = true;
+            hybridStore.deleteByIds(staleChunkIds);
             markReady(document, chunks.size());
             log.info("文档入库完成，docKey={}, chunks={}", docKey, chunks.size());
             return toResult(document, false);
@@ -107,7 +136,9 @@ public class DocumentIngestionService {
             throw e;
         } catch (Exception e) {
             log.error("文档入库失败，docKey={}", docKey, e);
-            cleanupNewData(chunkIds);
+            if (!dbReplaced) {
+                cleanupNewData(chunkIds);
+            }
             markFailed(document, e.getMessage());
             throw new ApiException(500, "文档入库失败: " + e.getMessage());
         }
@@ -181,9 +212,9 @@ public class DocumentIngestionService {
                 .put("structure_quality", parsed.structureQuality())
                 .put("parser", parsed.parserName());
 
-        Document document = Document.from(parsed.markdown(), metadata);
-        List<TextSegment> segments = documentSplitter.split(document);
+        List<TextSegment> segments = structureAwareChunker.chunk(parsed.markdown(), metadata);
         List<TextSegment> chunks = new ArrayList<>();
+        Map<String, String> parentIds = new HashMap<>();
 
         int chunkIndex = 0;
         for (TextSegment segment : segments) {
@@ -200,8 +231,25 @@ public class DocumentIngestionService {
                     .put("chunk_index", chunkIndex)
                     .put("content_hash", contentHash);
 
-            chunks.add(TextSegment.from(content, chunkMetadata));
+            TextSegment chunk = TextSegment.from(content, chunkMetadata);
+            if ("parent".equals(chunkMetadata.getString("role"))) {
+                parentIds.put(chunkMetadata.getString("parent_key"), chunkId);
+            }
+            chunks.add(chunk);
             chunkIndex++;
+        }
+
+        for (TextSegment chunk : chunks) {
+            if ("parent".equals(chunk.metadata().getString("role"))) {
+                continue;
+            }
+            String parentKey = chunk.metadata().getString("parent_key");
+            if (parentKey != null && !parentKey.isBlank()) {
+                String parentId = parentIds.get(parentKey);
+                if (parentId != null) {
+                    chunk.metadata().put("parent_id", parentId);
+                }
+            }
         }
 
         return chunks;
@@ -224,34 +272,42 @@ public class DocumentIngestionService {
         return embeddings;
     }
 
-    private void removeOldChunks(KnowledgeDocument document) {
-        List<KnowledgeChunk> oldChunks = chunkMapper.selectList(
-                new LambdaQueryWrapper<KnowledgeChunk>()
-                        .eq(KnowledgeChunk::getDocumentId, document.getId()));
-
-        if (oldChunks.isEmpty()) {
-            return;
+    private List<HybridChunk> toHybridChunks(List<TextSegment> chunks, List<Embedding> embeddings) {
+        List<HybridChunk> hybridChunks = new ArrayList<>(chunks.size());
+        for (int i = 0; i < chunks.size(); i++) {
+            TextSegment chunk = chunks.get(i);
+            Metadata metadata = chunk.metadata();
+            hybridChunks.add(HybridChunk.builder()
+                    .id(metadata.getString("chunk_id"))
+                    .text(chunk.text())
+                    .dense(embeddings.get(i).vector())
+                    .docKey(metadata.getString("doc_key"))
+                    .docHash(metadata.getString("doc_hash"))
+                    .source(metadata.getString("source"))
+                    .title(metadata.getString("title"))
+                    .docType(metadata.getString("doc_type"))
+                    .department(metadata.getString("department"))
+                    .chunkIndex(metadata.getInteger("chunk_index"))
+                    .contentHash(metadata.getString("content_hash"))
+                    .structureQuality(metadata.getString("structure_quality"))
+                    .parser(metadata.getString("parser"))
+                    .outlinePath(metadata.getString("outline_path"))
+                    .parentId(metadata.getString("parent_id"))
+                    .role(metadata.getString("role"))
+                    .strategy(metadata.getString("strategy"))
+                    .build());
         }
-
-        List<String> oldChunkIds = oldChunks.stream()
-                .map(KnowledgeChunk::getChunkId)
-                .toList();
-        embeddingStore.removeAll(oldChunkIds);
-        chunkMapper.delete(new LambdaQueryWrapper<KnowledgeChunk>()
-                .eq(KnowledgeChunk::getDocumentId, document.getId()));
+        return hybridChunks;
     }
 
-    private void insertChunkRows(KnowledgeDocument document, String docKey, List<TextSegment> chunks) {
-        for (TextSegment chunk : chunks) {
-            KnowledgeChunk row = new KnowledgeChunk();
-            row.setDocumentId(document.getId());
-            row.setChunkId(chunk.metadata().getString("chunk_id"));
-            row.setDocKey(docKey);
-            row.setChunkIndex(chunk.metadata().getInteger("chunk_index"));
-            row.setContentHash(chunk.metadata().getString("content_hash"));
-            row.setContent(chunk.text());
-            chunkMapper.insert(row);
-        }
+    private List<String> staleChunkIds(KnowledgeDocument document, List<String> newChunkIds) {
+        Set<String> newIds = new HashSet<>(newChunkIds);
+        return chunkMapper.selectList(new LambdaQueryWrapper<KnowledgeChunk>()
+                        .eq(KnowledgeChunk::getDocumentId, document.getId()))
+                .stream()
+                .map(KnowledgeChunk::getChunkId)
+                .filter(chunkId -> !newIds.contains(chunkId))
+                .toList();
     }
 
     private void cleanupNewData(List<String> chunkIds) {
@@ -261,7 +317,7 @@ public class DocumentIngestionService {
         try {
             chunkMapper.delete(new LambdaQueryWrapper<KnowledgeChunk>()
                     .in(KnowledgeChunk::getChunkId, chunkIds));
-            embeddingStore.removeAll(chunkIds);
+            hybridStore.deleteByIds(chunkIds);
         } catch (Exception cleanupError) {
             log.warn("清理失败数据时出错，chunkIds={}", chunkIds, cleanupError);
         }
@@ -308,6 +364,26 @@ public class DocumentIngestionService {
         } catch (IOException e) {
             throw ApiException.badRequest("读取文件失败: " + e.getMessage());
         }
+    }
+
+    private ParsedDocument ensureTitle(ParsedDocument parsed, String source) {
+        String title = parsed.title();
+        if (title == null || title.isBlank() || title.startsWith("knowledge-")) {
+            String stem = source;
+            int dot = stem.lastIndexOf('.');
+            if (dot > 0) {
+                stem = stem.substring(0, dot);
+            }
+            title = stem;
+        }
+        if (title.length() > 200) {
+            title = title.substring(0, 200);
+        }
+        if (title.equals(parsed.title())) {
+            return parsed;
+        }
+        return new ParsedDocument(parsed.markdown(), title,
+                parsed.docType(), parsed.structureQuality(), parsed.parserName());
     }
 
     private String normalizeSource(String originalName) {

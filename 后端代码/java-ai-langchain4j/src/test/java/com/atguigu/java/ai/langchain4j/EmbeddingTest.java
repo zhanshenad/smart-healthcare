@@ -8,6 +8,7 @@ import dev.langchain4j.data.segment.TextSegment;
 import dev.langchain4j.model.embedding.EmbeddingModel;
 import dev.langchain4j.model.output.Response;
 import dev.langchain4j.store.embedding.*;
+import dev.langchain4j.store.embedding.inmemory.InMemoryEmbeddingStore;
 import java.util.Arrays;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -31,17 +32,16 @@ public class EmbeddingTest {
         System.out.println("向量输出：" + embed.toString());
     }
 
-    @Autowired
-    private EmbeddingStore embeddingStore;
+    private final EmbeddingStore<TextSegment> embeddingStore = new InMemoryEmbeddingStore<>();
 
     /**
-     * 将文本转换成向量，然后存储到 Milvus 中
+     * 将文本转换成向量并写入内存向量库
      *
      * 参考：
      * https://docs.langchain4j.dev/tutorials/embedding-stores
      */
     @Test
-    public void testMilvusEmbedded() {
+    public void testInMemoryEmbedding() {
 
         //将文本转换成向量
         TextSegment segment1 = TextSegment.from("我喜欢羽毛球");
@@ -59,6 +59,10 @@ public class EmbeddingTest {
      */
     @Test
     public void embeddingSearch() {
+
+        //先写入一条测试数据，避免依赖其他测试的执行顺序
+        TextSegment segment = TextSegment.from("我喜欢羽毛球");
+        embeddingStore.add(embeddingModel.embed(segment).content(), segment);
 
         //提问，并将问题转成向量数据
         Embedding queryEmbedding = embeddingModel.embed("你最喜欢的运动是什么？").content();

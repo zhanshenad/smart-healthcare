@@ -31,9 +31,6 @@ public class DocumentParseService {
         try {
             ParsedDocument parsed = parser.parse(file);
             String markdown = normalizer.normalize(parsed.markdown());
-            if (markdown.isBlank()) {
-                throw ApiException.badRequest("文档解析结果为空，可能是扫描件或加密文件");
-            }
             return parsed.withMarkdown(markdown);
         } catch (IOException e) {
             throw ApiException.badRequest("文档解析失败: " + e.getMessage());

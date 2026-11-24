@@ -25,5 +25,13 @@ public class KnowledgeChunk {
 
     private String content;
 
+    private String outlinePath;
+
+    private String parentId;
+
+    private String role;
+
+    private String strategy;
+
     private LocalDateTime createdAt;
 }

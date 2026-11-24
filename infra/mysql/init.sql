@@ -66,9 +66,14 @@ CREATE TABLE IF NOT EXISTS `knowledge_chunks` (
   `chunk_index` INT NOT NULL,
   `content_hash` VARCHAR(64) NOT NULL,
   `content` MEDIUMTEXT NOT NULL,
+  `outline_path` VARCHAR(1024) DEFAULT NULL,
+  `parent_id` VARCHAR(64) DEFAULT NULL,
+  `role` VARCHAR(32) DEFAULT NULL,
+  `strategy` VARCHAR(64) DEFAULT NULL,
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_knowledge_chunks_chunk_id` (`chunk_id`),
   KEY `idx_knowledge_chunks_document` (`document_id`),
-  KEY `idx_knowledge_chunks_doc_key` (`doc_key`)
+  KEY `idx_knowledge_chunks_doc_key` (`doc_key`),
+  KEY `idx_knowledge_chunks_parent` (`parent_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

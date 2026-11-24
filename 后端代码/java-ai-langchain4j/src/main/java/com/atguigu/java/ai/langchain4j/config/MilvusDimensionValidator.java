@@ -71,7 +71,7 @@ public class MilvusDimensionValidator implements ApplicationRunner {
 
     private Integer findVectorDimension(Iterable<FieldSchema> fields) {
         for (FieldSchema field : fields) {
-            if (!"vector".equals(field.getName())) {
+            if (!"dense".equals(field.getName())) {
                 continue;
             }
             for (KeyValuePair pair : field.getTypeParamsList()) {

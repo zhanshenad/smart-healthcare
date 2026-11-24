@@ -13,7 +13,7 @@ import static dev.langchain4j.service.spring.AiServiceWiringMode.EXPLICIT;
         streamingChatModel= "qwenStreamingChatModel",
         chatMemoryProvider = "chatMemoryProviderXiaozhi",
         tools = {"appointmentTools", "dateTools"},
-        contentRetriever = "contentRetrieverXiaozhiMilvus"
+        retrievalAugmentor = "medicalRetrievalAugmentor"
 )
 public interface XiaozhiAgent {
 

@@ -35,11 +35,12 @@ public class KnowledgeController {
         this.ingestionService = ingestionService;
     }
 
-    @Operation(summary = "上传并入库知识库文档")
+    @Operation(summary = "上传并入库知识库文档", description = "force=true 时忽略文件 hash 跳过逻辑，强制重新切片和入库")
     @PostMapping(value = "/ingest", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ApiResponse<KnowledgeIngestResult> ingest(
             @RequestPart("file") MultipartFile file,
-            @RequestParam(value = "department", required = false) String department) {
+            @RequestParam(value = "department", required = false) String department,
+            @RequestParam(value = "force", defaultValue = "false") boolean force) {
 
         if (file == null || file.isEmpty()) {
             throw ApiException.badRequest("文件不能为空");
@@ -50,7 +51,7 @@ public class KnowledgeController {
         try {
             tempFile = Files.createTempFile("knowledge-", suffixOf(originalName));
             file.transferTo(tempFile);
-            return ApiResponse.ok(ingestionService.ingest(tempFile, originalName, department));
+            return ApiResponse.ok(ingestionService.ingest(tempFile, originalName, department, force));
         } catch (IOException e) {
             log.error("保存上传文件失败", e);
             throw ApiException.badRequest("保存上传文件失败");

@@ -15,6 +15,11 @@
 - `@Tool` 预约、取消预约、日期时间、计算器
 - 预约记录绑定当前登录用户
 - Milvus 向量库 RAG 文档检索
+- Dense + BM25 混合检索、RRF 融合、Rerank 重排、Boost 加分
+- 回答带 `[来源n]` 引用标注与检索耗时日志
+- 五种结构化切片：法条、表格、标题大纲、SOP 步骤、制度手册父子块
+- 制度手册子块命中后自动回填父块内容
+- MinerU 解析复杂 PDF，失败自动回退 PDFBox
 - 文档上传、解析、切片、Embedding、幂等入库
 - MyBatis-Plus + MySQL 预约数据
 
@@ -76,7 +81,7 @@
 ```text
 com.atguigu.java.ai.langchain4j
 ├── controller    接口入口
-├── service       业务逻辑，impl 放实现
+├── service       业务逻辑，chunking 结构化切片，parser 文档解析
 ├── mapper        MyBatis-Plus Mapper
 ├── entity        数据库表与 MongoDB 文档
 ├── dto            请求参数
@@ -85,6 +90,7 @@ com.atguigu.java.ai.langchain4j
 ├── config         Spring 配置与配置属性
 ├── common         异常、统一响应、公共常量
 ├── memory         会话记忆实现
+├── rag            Milvus 混合检索、RRF、Rerank、Boost、父块回填
 ├── store          MongoDB 存储
 ├── tools          LangChain4j 工具
 └── assistant      AiService 接口
@@ -187,7 +193,58 @@ curl -X POST http://localhost:8080/medical/knowledge/ingest `
   -F "department=神经内科"
 ```
 
-当前支持 `.md`、`.txt`、`.pdf`。PDF 使用 PDFBox 抽取文本；MinerU 解析作为后续增强。
+重建索引时加 `-F "force=true"`，即使文件 hash 未变化也会重新切片和写入 Milvus。
+
+当前支持 `.md`、`.txt`、`.pdf`。PDF 默认使用 PDFBox 抽取文本；开启 MinerU 后优先走
+MinerU 转 Markdown，失败自动回退 PDFBox。
+
+### RAG 检索流程
+
+```text
+用户问题
+  ├─ Dense：Embedding → Milvus HNSW，取 50 条
+  └─ BM25：Milvus 中文分词 → 稀疏向量，取 50 条
+        ↓
+  Java 层 RRF 融合（k=60），保留 30 条
+        ↓
+  DashScope gte-rerank-v2 重排，失败时回退 RRF 顺序
+        ↓
+  科室 / 标题 / 官方文档 Boost 加分
+        ↓
+  取 Top 5，拼接 [来源n] 后注入用户消息
+```
+
+Milvus collection 使用 `text`、`dense`、`sparse` 三个核心字段，`text → sparse`
+由 Milvus BM25 Function 自动生成。旧版本创建的 collection 不含 `sparse` 或
+`outline_path / parent_id / role / strategy` 时，需要删除旧 collection 再启动，
+程序会自动重建。
+
+### 结构化切片
+
+切片前先把文档统一成 Markdown，再按结构选择策略：
+
+| 策略 | 适用内容 | 产物 |
+|---|---|---|
+| `laws_structured` | 第X章 / 第X条 / 第X款 | 按条或款切片 |
+| `markdown_table` | Markdown 表格 | 表头 + 每行数据 |
+| `markdown_outline` | 普通标题层级 | 一节一块，记录 `outline_path` |
+| `sop_steps` | 第一步 / Step 1 | 每个步骤一块 |
+| `policy_manual_structured` | 制度 / 手册 / 规范 / 流程 | 父块 + 子块，记录 `parent_id` |
+
+制度手册父块只写 MySQL，不写 Milvus；子块命中后按 `parent_id` 从 MySQL
+取回父块完整内容，再交给大模型。
+
+### MinerU 解析
+
+默认关闭，复杂 PDF / 扫描件可开启：
+
+```powershell
+$env:MINERU_ENABLED="true"
+$env:MINERU_URL="http://localhost:8000"
+$env:MINERU_BACKEND="pipeline"
+```
+
+MinerU 服务不可用或解析失败时，会自动回退到 PDFBox 文本，不影响普通文档入库。
 
 ### 4. 启动前端
 
@@ -222,6 +279,7 @@ Vite 已配置 `/api` 代理到 `http://localhost:8080`。
 $env:MYSQL_PWD="你的MySQL密码"
 docker exec -i -e MYSQL_PWD xiaozhi-mysql mysql -uroot < infra/mysql/migrate-phase2.sql
 docker exec -i -e MYSQL_PWD xiaozhi-mysql mysql -uroot < infra/mysql/migrate-phase3.sql
+docker exec -i -e MYSQL_PWD xiaozhi-mysql mysql -uroot < infra/mysql/migrate-phase3-1.sql
 ```
 
 主要表：
@@ -230,7 +288,7 @@ docker exec -i -e MYSQL_PWD xiaozhi-mysql mysql -uroot < infra/mysql/migrate-pha
 - `chat_sessions`：`memoryId` 与 `userId` 的归属关系
 - `appointment`：预约记录，按 `user_id` 隔离
 - `knowledge_documents`：知识库文档、doc_hash、入库状态
-- `knowledge_chunks`：文档切片、chunk_id、content_hash
+- `knowledge_chunks`：文档切片、chunk_id、content_hash、outline_path、parent_id、role、strategy
 
 ### MongoDB
 
@@ -253,6 +311,24 @@ MongoDB 使用 `27018`，避免与本机默认 `27017` 冲突。
 - `xiaozhi.rag.embedding-dimension`：向量维度，默认 `1024`，必须与 Milvus collection 一致
 - `xiaozhi.rag.chunk-size`：切片长度，默认 `500`
 - `xiaozhi.rag.chunk-overlap`：切片重叠，默认 `80`
+- `xiaozhi.rag.candidate-k`：Dense / BM25 单路召回数量，默认 `50`
+- `xiaozhi.rag.rrf-k`：RRF 平滑参数，默认 `60`
+- `xiaozhi.rag.rerank-candidate-k`：Rerank 候选数量，默认 `30`
+- `xiaozhi.rag.top-n`：最终注入上下文的片段数，默认 `5`
+- `xiaozhi.rag.rerank.enabled`：是否启用 Rerank，默认 `true`
+- `xiaozhi.rag.rerank.api-key`：Rerank API Key，默认读取 `DASH_SCOPE_API_KEY`，为空时自动跳过
+- `xiaozhi.rag.rerank.url`：Rerank 接口地址，默认百炼 `text-rerank`
+- `xiaozhi.rag.rerank.model`：Rerank 模型，默认 `gte-rerank-v2`
+- `xiaozhi.rag.rerank.timeout-seconds`：Rerank 超时时间，默认 `10` 秒
+- `xiaozhi.rag.boost.department-weight`：科室精确匹配加分，默认 `0.05`
+- `xiaozhi.rag.boost.title-weight`：标题匹配加分，默认 `0.03`
+- `xiaozhi.rag.boost.official-weight`：官方 / 指南 / 规范文档加分，默认 `0.02`
+- `xiaozhi.rag.mineru.enabled`：是否启用 MinerU，默认 `false`
+- `xiaozhi.rag.mineru.url`：MinerU API 地址，默认 `http://localhost:8000`
+- `xiaozhi.rag.mineru.backend`：MinerU 解析后端，默认 `pipeline`
+- `xiaozhi.rag.mineru.server-url`：`vlm-http-client` / `hybrid-http-client` 的后端地址，默认空
+- `xiaozhi.rag.mineru.lang`：OCR 语言，默认 `ch`
+- `xiaozhi.rag.mineru.timeout-seconds`：MinerU 超时时间，默认 `300` 秒
 - `xiaozhi.rag.milvus.host`：Milvus 地址，默认 `localhost`
 - `xiaozhi.rag.milvus.port`：Milvus gRPC 端口，默认 `19530`
 - `xiaozhi.rag.milvus.database-name`：Milvus 数据库，默认 `default`
