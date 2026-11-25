@@ -46,6 +46,26 @@
             </span>
           </div>
         </div>
+        <div class="model-bar">
+          <el-select
+            v-model="selectedModelId"
+            size="small"
+            placeholder="选择模型"
+            style="width: 180px"
+            @change="rememberModel"
+          >
+            <el-option
+              v-for="option in modelOptions"
+              :key="option.id"
+              :label="option.modelName || option.id"
+              :value="option.id"
+            />
+          </el-select>
+          <el-tag v-if="currentStatus" size="small" :type="currentStatus.type">
+            {{ currentStatus.text }}
+          </el-tag>
+          <el-button text size="small" @click="openModelSettings">模型设置</el-button>
+        </div>
         <div class="input-container">
           <el-input
             v-model="inputMessage"
@@ -58,12 +78,48 @@
         </div>
       </div>
     </div>
+
+    <el-dialog v-model="modelDialogVisible" title="模型 Key 设置" width="520px">
+      <div v-for="option in providerOptions" :key="option.provider" class="model-setting-row">
+        <div class="model-setting-head">
+          <span>{{ option.modelName || option.id }}</span>
+          <el-tag size="small" :type="modelStatus(option).type">{{ modelStatus(option).text }}</el-tag>
+        </div>
+        <div class="model-setting-body">
+          <el-input
+            v-model="keyInputs[option.provider]"
+            placeholder="输入该 provider 的 API Key"
+            show-password
+            clearable
+          />
+          <el-button
+            type="primary"
+            size="small"
+            :loading="savingProvider === option.provider"
+            @click="saveKey(option.provider)"
+          >
+            保存
+          </el-button>
+          <el-button
+            v-if="option.configured"
+            type="danger"
+            text
+            size="small"
+            @click="deleteKey(option.provider)"
+          >
+            删除
+          </el-button>
+        </div>
+        <div class="model-setting-hint">{{ modelStatus(option).hint }}</div>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { onMounted, ref, watch } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { v4 as uuidv4 } from 'uuid'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import http from '@/api/http'
 
 const props = defineProps({
@@ -80,10 +136,33 @@ const uuid = ref()
 const inputMessage = ref('')
 const messages = ref([])
 
-onMounted(() => {
+const modelOptions = ref([])
+const selectedModelId = ref(localStorage.getItem('chat_model_id') || '')
+const modelDialogVisible = ref(false)
+const keyInputs = reactive({})
+const savingProvider = ref('')
+
+const currentOption = computed(() =>
+  modelOptions.value.find((option) => option.id === selectedModelId.value)
+)
+
+// 同一个 provider 只展示一次 Key 配置
+const providerOptions = computed(() => {
+  const seen = new Set()
+  return modelOptions.value.filter((option) => {
+    if (seen.has(option.provider)) {
+      return false
+    }
+    seen.add(option.provider)
+    return true
+  })
+})
+
+onMounted(async () => {
   initUUID()
   // 移除 setInterval，改用手动滚动
   watch(messages, () => scrollToBottom(), { deep: true })
+  await loadModels()
   hello()
 })
 
@@ -132,7 +211,7 @@ const sendRequest = (message) => {
   http
     .post(
       '/medical/chat',
-      { memoryId: uuid.value, message },
+      { memoryId: uuid.value, message, modelId: selectedModelId.value || undefined },
       {
         responseType: 'stream', // 按流读取，逐步拼接响应文本
         onDownloadProgress: (e) => {
@@ -155,6 +234,86 @@ const sendRequest = (message) => {
       messages.value.at(-1).isTyping = false
       isSending.value = false
     })
+}
+
+const loadModels = async () => {
+  try {
+    const { data } = await http.get('/medical/models')
+    const payload = data.data || {}
+    modelOptions.value = payload.models || []
+
+    const stored = localStorage.getItem('chat_model_id')
+    const exists = (id) => modelOptions.value.some((option) => option.id === id)
+    if (stored && exists(stored)) {
+      selectedModelId.value = stored
+    } else if (!exists(selectedModelId.value)) {
+      selectedModelId.value = payload.defaultModelId || modelOptions.value[0]?.id || ''
+    }
+  } catch (error) {
+    console.error('加载模型列表失败', error)
+  }
+}
+
+const rememberModel = () => {
+  if (selectedModelId.value) {
+    localStorage.setItem('chat_model_id', selectedModelId.value)
+  }
+}
+
+// 模型状态的文案、标签颜色和提示集中在一处
+const modelStatus = (option) => {
+  if (option.configured) {
+    return { text: '已配置', type: 'success', hint: `当前使用：${option.maskedKey}` }
+  }
+  if (option.fallback) {
+    return { text: '服务端默认', type: 'info', hint: '未配置，使用服务端默认 Key' }
+  }
+  return { text: '未配置', type: 'warning', hint: '未配置，请填写 Key 后再使用' }
+}
+
+const currentStatus = computed(() =>
+  currentOption.value ? modelStatus(currentOption.value) : null
+)
+
+const openModelSettings = async () => {
+  await loadModels()
+  modelDialogVisible.value = true
+}
+
+const saveKey = async (provider) => {
+  const apiKey = (keyInputs[provider] || '').trim()
+  if (!apiKey) {
+    ElMessage.warning('请输入 API Key')
+    return
+  }
+
+  savingProvider.value = provider
+  try {
+    // 保存前服务端会做对话和流式校验，留足超时
+    await http.put('/medical/model-keys', { provider, apiKey }, { timeout: 120000 })
+    ElMessage.success('API Key 已保存并启用')
+    keyInputs[provider] = ''
+    await loadModels()
+  } catch (error) {
+    ElMessage.error(error.response?.data?.message || '保存失败')
+  } finally {
+    savingProvider.value = ''
+  }
+}
+
+const deleteKey = async (provider) => {
+  try {
+    await ElMessageBox.confirm('删除后将回退到服务端默认 Key，确认删除？', '提示', {
+      type: 'warning',
+    })
+    await http.delete(`/medical/model-keys/${provider}`)
+    ElMessage.success('已删除')
+    await loadModels()
+  } catch (error) {
+    if (error !== 'cancel' && error !== 'close') {
+      ElMessage.error(error.response?.data?.message || '删除失败')
+    }
+  }
 }
 
 // 初始化 UUID
@@ -316,6 +475,46 @@ const newChat = () => {
     opacity: 1;
   }
 }
+.model-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+
+.model-setting-row {
+  padding: 12px 0;
+  border-bottom: 1px solid #ebeef5;
+}
+
+.model-setting-row:last-child {
+  border-bottom: none;
+}
+
+.model-setting-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  font-weight: 600;
+}
+
+.model-setting-body {
+  display: flex;
+  gap: 8px;
+}
+
+.model-setting-body .el-input {
+  flex: 1;
+}
+
+.model-setting-hint {
+  margin-top: 6px;
+  color: #909399;
+  font-size: 12px;
+}
+
 .input-container {
   display: flex;
 }

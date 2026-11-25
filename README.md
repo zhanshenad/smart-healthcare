@@ -7,6 +7,10 @@
 ## 功能
 
 - 通义千问对话
+- 支持 `qwen4-max` 等 OpenAI 兼容模型
+- 模型白名单 + BYOK：用户可选模型、配置自己的 API Key
+- 用户 Key 使用 AES-256-GCM 加密存储，接口只返回掩码
+- 未配置用户 Key 时回退服务端默认 Key
 - Flux 流式输出
 - 手机号验证码登录，JWT access/refresh token
 - 会话归属校验，不能使用他人的 memoryId
@@ -69,7 +73,10 @@
 │   ├── docker-compose.yml
 │   └── mysql/
 │       ├── init.sql
-│       └── migrate-phase2.sql
+│       ├── migrate-phase2.sql
+│       ├── migrate-phase3.sql
+│       ├── migrate-phase3-1.sql
+│       └── migrate-phase4.sql
 ├── 后端代码/
 │   └── java-ai-langchain4j/
 └── 前端代码/
@@ -142,6 +149,15 @@ $env:JWT_SECRET="至少32字节的随机字符串"
 - 对话：`qwen4-max`，走 OpenAI 兼容地址 `https://dashscope.aliyuncs.com/compatible-mode/v1`
 - Embedding：`qwen3.7-text-embedding-flash`，输出 1024 维
 - Rerank：`qwen3.7-text-rerank`
+
+当前模型白名单（`models.yml`）：
+
+- `qwen4-max`：provider `dashscope`，有服务端默认 Key
+- `deepseek-flash`：provider `deepseek`，DeepSeek 官方，需自配 Key
+- `glm-4-flash`：provider `zhipu`，智谱，免费，需自配 Key
+- `Qwen/Qwen3-8B`：provider `siliconflow`，硅基流动，免费，需自配 Key
+- `moonshot-v1-128k`：provider `moonshot`，Kimi，需自配 Key
+- `deepseek/deepseek-v3.2`：provider `ppio`，派欧云，需自配 Key
 
 注意：`qwen4-max` 只能通过兼容协议调用，DashScope 原生 `text-generation` 接口会返回 `url error`，所以流式对话使用 `openAiStreamingChatModel`，原生 DashScope 只保留 Embedding。
 
@@ -254,6 +270,26 @@ $env:MINERU_BACKEND="pipeline"
 
 MinerU 服务不可用或解析失败时，会自动回退到 PDFBox 文本，不影响普通文档入库。
 
+### 模型选择与 BYOK
+
+聊天默认使用服务端 `DASH_SCOPE_API_KEY`（仅百炼），用户也可以按 provider 配置自己的 Key：
+
+- `GET /medical/models`：查看白名单模型和当前 Key 配置状态
+- `PUT /medical/model-keys`：保存 `{provider, apiKey}`，服务端先做普通对话和流式校验
+- `DELETE /medical/model-keys/{provider}`：删除后回退服务端默认 Key
+
+前端只传 `modelId`，`baseUrl` 和 `modelName` 由服务端白名单固定，不能篡改。用户 Key 使用 AES-256-GCM 加密存储，AAD 绑定 `userId + provider`，接口只返回掩码。
+
+保存用户 Key 需要主密钥：
+
+```powershell
+$env:MODEL_KEY_SECRET="<Base64 编码的 32 字节>"
+```
+
+未设置时只禁用“保存用户 Key”，服务端默认 Key 仍可正常聊天。
+
+模型按 `userId:modelId:keyFingerprint` 缓存在 Caffeine，Key 更新或删除后对应缓存立即失效。
+
 ### 4. 启动前端
 
 ```powershell
@@ -288,6 +324,7 @@ $env:MYSQL_PWD="你的MySQL密码"
 docker exec -i -e MYSQL_PWD xiaozhi-mysql mysql -uroot < infra/mysql/migrate-phase2.sql
 docker exec -i -e MYSQL_PWD xiaozhi-mysql mysql -uroot < infra/mysql/migrate-phase3.sql
 docker exec -i -e MYSQL_PWD xiaozhi-mysql mysql -uroot < infra/mysql/migrate-phase3-1.sql
+docker exec -i -e MYSQL_PWD xiaozhi-mysql mysql -uroot < infra/mysql/migrate-phase4.sql
 ```
 
 主要表：
@@ -297,6 +334,7 @@ docker exec -i -e MYSQL_PWD xiaozhi-mysql mysql -uroot < infra/mysql/migrate-pha
 - `appointment`：预约记录，按 `user_id` 隔离
 - `knowledge_documents`：知识库文档、doc_hash、入库状态
 - `knowledge_chunks`：文档切片、chunk_id、content_hash、outline_path、parent_id、role、strategy
+- `user_model_keys`：用户模型 Key 密文、key_version、掩码
 
 ### MongoDB
 
@@ -315,7 +353,17 @@ MongoDB 使用 `27018`，避免与本机默认 `27017` 冲突。
 后端代码/java-ai-langchain4j/src/main/resources/application.properties
 ```
 
-- `DASH_SCOPE_API_KEY`：百炼 API Key
+模型白名单在：
+
+```text
+后端代码/java-ai-langchain4j/src/main/resources/models.yml
+```
+
+- `DASH_SCOPE_API_KEY`：百炼 API Key，也是没有用户 Key 时的服务端默认 Key
+- `MODEL_KEY_SECRET`：用户 API Key 加密主密钥，Base64 编码的 32 字节；未配置时禁用保存用户 Key
+- `xiaozhi.models.default-model-id`：默认模型，默认 `qwen4-max`，配置在 `models.yml`
+- `xiaozhi.models.entries[n]`：模型白名单，配置在 `models.yml`，包含 `id`、`provider`、`base-url`、`model-name`，`protocol` / `streaming` / `tools` 有默认值
+- `xiaozhi.models.default-api-keys.<provider>`：按 provider 配置服务端默认 Key，配置在 `models.yml`
 - `xiaozhi.rag.embedding-dimension`：向量维度，默认 `1024`，必须与 Milvus collection 一致
 - `xiaozhi.rag.chunk-size`：切片长度，默认 `500`
 - `xiaozhi.rag.chunk-overlap`：切片重叠，默认 `80`
