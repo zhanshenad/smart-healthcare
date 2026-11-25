@@ -1,11 +1,11 @@
 package com.atguigu.java.ai.langchain4j.service;
 
-import dev.langchain4j.community.model.dashscope.QwenChatModel;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.ToolExecutionResultMessage;
 import dev.langchain4j.data.message.UserMessage;
+import dev.langchain4j.model.openai.OpenAiChatModel;
 import java.util.List;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -14,9 +14,9 @@ import org.springframework.stereotype.Service;
 @Service
 public class SummaryService {
 
-    private final QwenChatModel chatModel;
+    private final OpenAiChatModel chatModel;
 
-    public SummaryService(QwenChatModel chatModel) {
+    public SummaryService(OpenAiChatModel chatModel) {
         this.chatModel = chatModel;
     }
 

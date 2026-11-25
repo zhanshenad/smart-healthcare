@@ -36,7 +36,7 @@ public class RagProperties {
 
         private String url = "https://dashscope.aliyuncs.com/api/v1/services/rerank/text-rerank/text-rerank";
 
-        private String model = "gte-rerank-v2";
+        private String model = "qwen3.7-text-rerank";
 
         private String apiKey;
 

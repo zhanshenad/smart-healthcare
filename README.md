@@ -137,6 +137,14 @@ $env:JWT_SECRET="至少32字节的随机字符串"
 
 不要把 Key 写进 `application.properties`，也不要提交到 Git。未设置 `JWT_SECRET` 时会使用开发默认值，生产环境必须覆盖。
 
+当前使用的百炼模型（均有免费额度）：
+
+- 对话：`qwen4-max`，走 OpenAI 兼容地址 `https://dashscope.aliyuncs.com/compatible-mode/v1`
+- Embedding：`qwen3.7-text-embedding-flash`，输出 1024 维
+- Rerank：`qwen3.7-text-rerank`
+
+注意：`qwen4-max` 只能通过兼容协议调用，DashScope 原生 `text-generation` 接口会返回 `url error`，所以流式对话使用 `openAiStreamingChatModel`，原生 DashScope 只保留 Embedding。
+
 本地未接真实短信服务，验证码会打印在后端日志中，例如：
 
 ```text
@@ -207,7 +215,7 @@ MinerU 转 Markdown，失败自动回退 PDFBox。
         ↓
   Java 层 RRF 融合（k=60），保留 30 条
         ↓
-  DashScope gte-rerank-v2 重排，失败时回退 RRF 顺序
+  DashScope qwen3.7-text-rerank 重排，失败时回退 RRF 顺序
         ↓
   科室 / 标题 / 官方文档 Boost 加分
         ↓
@@ -318,7 +326,7 @@ MongoDB 使用 `27018`，避免与本机默认 `27017` 冲突。
 - `xiaozhi.rag.rerank.enabled`：是否启用 Rerank，默认 `true`
 - `xiaozhi.rag.rerank.api-key`：Rerank API Key，默认读取 `DASH_SCOPE_API_KEY`，为空时自动跳过
 - `xiaozhi.rag.rerank.url`：Rerank 接口地址，默认百炼 `text-rerank`
-- `xiaozhi.rag.rerank.model`：Rerank 模型，默认 `gte-rerank-v2`
+- `xiaozhi.rag.rerank.model`：Rerank 模型，默认 `qwen3.7-text-rerank`
 - `xiaozhi.rag.rerank.timeout-seconds`：Rerank 超时时间，默认 `10` 秒
 - `xiaozhi.rag.boost.department-weight`：科室精确匹配加分，默认 `0.05`
 - `xiaozhi.rag.boost.title-weight`：标题匹配加分，默认 `0.03`
