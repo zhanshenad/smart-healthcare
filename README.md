@@ -18,6 +18,11 @@
 - Token 预算窗口 + 旧对话摘要压缩
 - `@Tool` 预约、取消预约、日期时间、计算器
 - 预约记录绑定当前登录用户
+- 预约时段唯一约束，防止并发重复预约
+- 号源原子扣减，取消预约回补
+- 取消预约按 `id + userId` 校验
+- 工具调用审计：工具名、参数、耗时、结果、memoryId
+- 日志和审计输出对身份证、API Key 脱敏
 - Milvus 向量库 RAG 文档检索
 - Dense + BM25 混合检索、RRF 融合、Rerank 重排、Boost 加分
 - 回答带 `[来源n]` 引用标注与检索耗时日志
@@ -290,6 +295,19 @@ $env:MODEL_KEY_SECRET="<Base64 编码的 32 字节>"
 
 模型按 `userId:modelId:keyFingerprint` 缓存在 Caffeine，Key 更新或删除后对应缓存立即失效。
 
+### 预约与号源
+
+预约写入 `appointment`，`user_id + department + date + time` 唯一，并发重复预约由唯一索引拦截。
+
+号源配置在 `department_schedule`，没配置的时段默认有号：
+
+```sql
+INSERT INTO department_schedule (department, `date`, `time`, total)
+VALUES ('神经内科', '2026-12-01', '上午', 20);
+```
+
+预约成功 `booked + 1`，取消预约 `booked - 1`，都通过带条件的原子更新完成；号源扣减失败时预约事务回滚。
+
 ### 4. 启动前端
 
 ```powershell
@@ -325,13 +343,15 @@ docker exec -i -e MYSQL_PWD xiaozhi-mysql mysql -uroot < infra/mysql/migrate-pha
 docker exec -i -e MYSQL_PWD xiaozhi-mysql mysql -uroot < infra/mysql/migrate-phase3.sql
 docker exec -i -e MYSQL_PWD xiaozhi-mysql mysql -uroot < infra/mysql/migrate-phase3-1.sql
 docker exec -i -e MYSQL_PWD xiaozhi-mysql mysql -uroot < infra/mysql/migrate-phase4.sql
+docker exec -i -e MYSQL_PWD xiaozhi-mysql mysql -uroot < infra/mysql/migrate-phase6.sql
 ```
 
 主要表：
 
 - `users`：用户、手机号、BCrypt 密码
 - `chat_sessions`：`memoryId` 与 `userId` 的归属关系
-- `appointment`：预约记录，按 `user_id` 隔离
+- `appointment`：预约记录，按 `user_id` 隔离，`user_id + department + date + time` 唯一
+- `department_schedule`：科室号源，`booked < total` 时可预约，未配置排班的时段默认有号
 - `knowledge_documents`：知识库文档、doc_hash、入库状态
 - `knowledge_chunks`：文档切片、chunk_id、content_hash、outline_path、parent_id、role、strategy
 - `user_model_keys`：用户模型 Key 密文、key_version、掩码

@@ -52,7 +52,19 @@ CREATE TABLE IF NOT EXISTS `appointment` (
   `time` VARCHAR(10) NOT NULL,
   `doctor_name` VARCHAR(50) DEFAULT NULL,
   PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_appointment_slot` (`user_id`, `department`, `date`, `time`),
   KEY `idx_appointment_user` (`user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `department_schedule` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT,
+  `department` VARCHAR(50) NOT NULL,
+  `date` VARCHAR(10) NOT NULL,
+  `time` VARCHAR(10) NOT NULL,
+  `total` INT NOT NULL,
+  `booked` INT NOT NULL DEFAULT 0,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_schedule_slot` (`department`, `date`, `time`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `knowledge_documents` (
