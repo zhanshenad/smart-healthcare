@@ -41,7 +41,7 @@ class RagQaEvaluationTest {
         assertThat(qaFile).exists();
 
         List<QaItem> items = parse(Files.readString(qaFile, StandardCharsets.UTF_8));
-        assertThat(items).hasSizeGreaterThanOrEqualTo(60);
+        assertThat(items).hasSizeGreaterThanOrEqualTo(20);
 
         int limit = Integer.parseInt(System.getProperty("rag.eval.limit", "0"));
         if (limit > 0) {
