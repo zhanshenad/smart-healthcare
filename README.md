@@ -11,7 +11,7 @@
 - 模型白名单 + BYOK：用户可选模型、配置自己的 API Key
 - 用户 Key 使用 AES-256-GCM 加密存储，接口只返回掩码
 - 未配置用户 Key 时回退服务端默认 Key
-- Flux 流式输出
+- Flux 增量输出（`text/plain` 逐段返回，不是 SSE）
 - 手机号验证码登录，JWT access/refresh token
 - 会话归属校验，不能使用他人的 memoryId
 - ChatMemory + MongoDB 会话记忆
@@ -76,12 +76,14 @@
 ├── README.md
 ├── infra/
 │   ├── docker-compose.yml
+│   ├── mongodb/
 │   └── mysql/
 │       ├── init.sql
 │       ├── migrate-phase2.sql
 │       ├── migrate-phase3.sql
 │       ├── migrate-phase3-1.sql
-│       └── migrate-phase4.sql
+│       ├── migrate-phase4.sql
+│       └── migrate-phase6.sql
 ├── 后端代码/
 │   └── java-ai-langchain4j/
 └── 前端代码/
@@ -149,7 +151,7 @@ $env:JWT_SECRET="至少32字节的随机字符串"
 
 不要把 Key 写进 `application.properties`，也不要提交到 Git。未设置 `JWT_SECRET` 时会使用开发默认值，生产环境必须覆盖。
 
-当前使用的百炼模型（均有免费额度）：
+当前使用的百炼模型（免费额度以百炼控制台为准，额度用完会返回 403，需要在控制台关闭「免费额度用完即停」或充值）：
 
 - 对话：`qwen4-max`，走 OpenAI 兼容地址 `https://dashscope.aliyuncs.com/compatible-mode/v1`
 - Embedding：`qwen3.7-text-embedding-flash`，输出 1024 维
@@ -216,13 +218,12 @@ GET  /medical/knowledge/documents 查看文档入库状态
 上传示例：
 
 ```powershell
-curl -X POST http://localhost:8080/medical/knowledge/ingest `
+curl -X POST "http://localhost:8080/medical/knowledge/ingest?department=神经内科" `
   -H "Authorization: Bearer <accessToken>" `
-  -F "file=@E:/knowledge/医院信息.md" `
-  -F "department=神经内科"
+  -F "file=@本地路径/医院信息.md"
 ```
 
-重建索引时加 `-F "force=true"`，即使文件 hash 未变化也会重新切片和写入 Milvus。
+`department` 和 `force` 都是 query 参数。重建索引时加 `&force=true`，即使文件 hash 未变化也会重新切片和写入 Milvus。
 
 当前支持 `.md`、`.txt`、`.pdf`。PDF 默认优先走 MinerU 转 Markdown，MinerU 不可用或
 解析失败时自动回退 PDFBox。
@@ -244,9 +245,9 @@ curl -X POST http://localhost:8080/medical/knowledge/ingest `
 ```
 
 Milvus collection 使用 `text`、`dense`、`sparse` 三个核心字段，`text → sparse`
-由 Milvus BM25 Function 自动生成。旧版本创建的 collection 不含 `sparse` 或
-`outline_path / parent_id / role / strategy` 时，需要删除旧 collection 再启动，
-程序会自动重建。
+由 Milvus BM25 Function 自动生成。collection 不存在时启动会自动创建；已存在的
+collection 如果缺少 `sparse` 或 `outline_path / parent_id / role / strategy`，
+启动会报「不支持混合检索，请删除后重建」并停止，删掉旧 collection 后重启即可。
 
 ### 结构化切片
 
@@ -428,9 +429,40 @@ MongoDB 使用 `27018`，避免与本机默认 `27017` 冲突。
 - `app.sms.debug`：是否把验证码打印到日志，本地默认 true
 - MongoDB 默认连接 `localhost:27018`
 
+## 测试与评测
+
+单元测试与集成测试：
+
+```powershell
+cd 后端代码\java-ai-langchain4j
+mvn test
+```
+
+需要本地 Docker（MySQL / MongoDB / Milvus）已启动，并设置 `DASH_SCOPE_API_KEY`，涉及模型的用例会真实调用接口。
+
+RAG 检索评测用 QA 清单跑，需要显式开启：
+
+```powershell
+mvn -Dtest=RagQaEvaluationTest -Drag.eval=true `
+    -Drag.qa.file=..\..\rag文档\对比2\QA对账.txt `
+    -Drag.eval.tag=structured test
+```
+
+评测输出 Recall@1、Recall@5、MRR 和 Top5 证据命中率，报告写到 `target/rag-eval-report-<tag>.md`。
+
+已完成三轮「结构化切片 vs 纯递归切片」对比（每轮均清库后分别入库，链路同为 Dense + BM25 + RRF + Rerank）：
+
+| 轮次 | 文档 / 问题 | 切片数（结构化 / 递归） | Recall@1（两组） |
+|---|---|---|---|
+| 对比 1 | 20 篇 / 61 题 | 523 / 179 | 96.7% / 96.7% |
+| 对比 2 | 10 篇 / 32 题 | 213 / 91 | 100% / 100% |
+| 对比 3 | 10 篇 / 32 题 | 224 / 68 | 96.9% / 96.9% |
+
+文档级指标三轮打平，差异体现在切片质量：结构化切片表格带表头率和单行原子率为 100%，纯递归为 12%～46%；法条单条率结构化约 92%～98%，纯递归 7%～16%；纯递归有 15%～38% 的切片跨章节。
+
 ## 说明
 
 - 仓库只包含代码与运行配置。
 - `环境说明.md`、`依赖版本报告.md`、`run-backend.ps1`、`run-frontend.ps1` 为本地文件，不纳入仓库。
-- 部分测试依赖本地 `E:/knowledge` 目录和 API Key，运行前需自行调整。
+- 评测用的文档与 QA 清单在仓库外的 `rag文档/` 目录，未纳入版本管理。
 - 生产环境请修改默认数据库密码，并使用环境变量或密钥管理服务。
