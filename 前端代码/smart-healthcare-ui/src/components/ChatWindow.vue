@@ -34,7 +34,7 @@
             ></i>
             <!-- 会话内容 -->
             <span>
-              <span v-html="message.content"></span>
+              <span v-html="formatContent(message.content)"></span>
               <!-- loading -->
               <span
                 class="loading-dots"
@@ -119,6 +119,7 @@
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { v4 as uuidv4 } from 'uuid'
+import axios from 'axios'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import http from '@/api/http'
 
@@ -183,57 +184,120 @@ const sendMessage = () => {
   }
 }
 
-const sendRequest = (message) => {
+const sendRequest = async (message) => {
   isSending.value = true
-  const userMsg = {
-    isUser: true,
-    content: message,
-    isTyping: false,
-    isThinking: false,
-  }
   //第一条默认发送的用户消息”你好“不放入会话列表
-  if(messages.value.length > 0){
-    messages.value.push(userMsg)
+  if (messages.value.length > 0) {
+    messages.value.push({
+      isUser: true,
+      content: message,
+      isTyping: false,
+      isThinking: false,
+    })
   }
 
-
-  // 添加机器人加载消息
-  const botMsg = {
+  // 机器人消息先占位，收到 SSE 分段后逐步拼接
+  const botMsg = reactive({
     isUser: false,
-    content: '', // 增量填充
-    isTyping: true, // 显示加载动画
+    content: '',
+    isTyping: true,
     isThinking: false,
-  }
+  })
   messages.value.push(botMsg)
-  const lastMsg = messages.value[messages.value.length - 1]
   scrollToBottom()
 
-  http
-    .post(
-      '/medical/chat',
+  try {
+    await streamChat(
       { memoryId: uuid.value, message, modelId: selectedModelId.value || undefined },
-      {
-        responseType: 'stream', // 按流读取，逐步拼接响应文本
-        onDownloadProgress: (e) => {
-          const fullText = e.event.target.responseText // 累积的完整文本
-          let newText = fullText.substring(lastMsg.content.length)
-          lastMsg.content += newText //增量更新
-          console.log(lastMsg)
-          scrollToBottom() // 实时滚动
-        },
+      (text) => {
+        botMsg.content += text
+        scrollToBottom()
       }
     )
-    .then(() => {
-      // 流结束后隐藏加载动画
-      messages.value.at(-1).isTyping = false
-      isSending.value = false
+  } catch (error) {
+    console.error('SSE 流式错误:', error)
+    botMsg.content = error.message || '请求失败，请重试'
+  } finally {
+    botMsg.isTyping = false
+    isSending.value = false
+  }
+}
+
+const streamChat = async (payload, onChunk) => {
+  const request = () =>
+    fetch('/api/medical/chat', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${localStorage.getItem('access_token') || ''}`,
+      },
+      body: JSON.stringify(payload),
     })
-    .catch((error) => {
-      console.error('流式错误:', error)
-      messages.value.at(-1).content = '请求失败，请重试'
-      messages.value.at(-1).isTyping = false
-      isSending.value = false
-    })
+
+  let response = await request()
+  if (response.status === 401 && (await refreshAccessToken())) {
+    response = await request()
+  }
+  if (!response.ok || !response.body) {
+    throw new Error(`请求失败（${response.status}）`)
+  }
+
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder('utf-8')
+  let buffer = ''
+  while (true) {
+    const { value, done } = await reader.read()
+    if (done) {
+      return
+    }
+    buffer += decoder.decode(value, { stream: true })
+
+    let match = buffer.match(/\r?\n\r?\n/)
+    while (match) {
+      const frame = buffer.slice(0, match.index)
+      buffer = buffer.slice(match.index + match[0].length)
+      const { event, data } = parseFrame(frame)
+      if (event === 'done') {
+        return
+      }
+      if (event === 'error') {
+        throw new Error(data || '生成回答失败')
+      }
+      if (data) {
+        onChunk(data)
+      }
+      match = buffer.match(/\r?\n\r?\n/)
+    }
+  }
+}
+
+// 一帧可能有多行 data，按 SSE 规范用换行拼接
+const parseFrame = (frame) => {
+  let event = 'message'
+  const data = []
+  for (const line of frame.split(/\r?\n/)) {
+    if (line.startsWith('event:')) {
+      event = line.slice(6).trim()
+    } else if (line.startsWith('data:')) {
+      data.push(line.slice(5).replace(/^ /, ''))
+    }
+  }
+  return { event, data: data.join('\n') }
+}
+
+const refreshAccessToken = async () => {
+  const refreshToken = localStorage.getItem('refresh_token')
+  if (!refreshToken) {
+    return false
+  }
+  try {
+    const { data } = await axios.post('/api/auth/refresh', { refreshToken })
+    localStorage.setItem('access_token', data.data.accessToken)
+    localStorage.setItem('refresh_token', data.data.refreshToken)
+    return true
+  } catch (error) {
+    return false
+  }
 }
 
 const loadModels = async () => {
@@ -331,14 +395,14 @@ const logout = () => {
   emit('logout')
 }
 
-// 转换特殊字符
-const convertStreamOutput = (output) => {
-  return output
-    .replace(/\n/g, '<br>')
-    .replace(/\t/g, '&nbsp;&nbsp;&nbsp;&nbsp;')
-    .replace(/&/g, '&amp;') // 新增转义，避免 HTML 注入
+// 先转义再换行，顺序反了会把 <br> 也转义掉
+const formatContent = (output) => {
+  return String(output ?? '')
+    .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
+    .replace(/\n/g, '<br>')
+    .replace(/\t/g, '&nbsp;&nbsp;&nbsp;&nbsp;')
 }
 
 const newChat = () => {

@@ -11,7 +11,7 @@
 - 模型白名单 + BYOK：用户可选模型、配置自己的 API Key
 - 用户 Key 使用 AES-256-GCM 加密存储，接口只返回掩码
 - 未配置用户 Key 时回退服务端默认 Key
-- Flux 增量输出（`text/plain` 逐段返回，不是 SSE）
+- SSE 流式输出（`text/event-stream`，分段推送，结束发 `done` 事件，异常发 `error` 事件）
 - 手机号验证码登录，JWT access/refresh token
 - 会话归属校验，不能使用他人的 memoryId
 - ChatMemory + MongoDB 会话记忆
@@ -207,6 +207,26 @@ Authorization: Bearer <accessToken>
 ```
 
 聊天请求里的 `memoryId` 必须是 UUID，前端会自动生成并保存在本地。
+
+`POST /medical/chat` 返回 SSE，逐段输出：
+
+```text
+data:你好
+
+data:，我可以帮你
+
+event:done
+data:[DONE]
+```
+
+前端用 `fetch` + `ReadableStream` 解析（`EventSource` 不支持 POST），收到 `event:done` 结束，收到 `event:error` 提示失败；401 时自动刷新 access token 重试一次。命令行验证：
+
+```powershell
+curl -N -X POST http://localhost:8080/medical/chat `
+  -H "Authorization: Bearer <accessToken>" `
+  -H "Content-Type: application/json" `
+  -d '{\"memoryId\":\"<uuid>\",\"message\":\"你好\"}'
+```
 
 知识库接口：
 

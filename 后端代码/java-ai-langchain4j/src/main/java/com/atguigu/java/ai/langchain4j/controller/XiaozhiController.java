@@ -9,6 +9,8 @@ import com.atguigu.java.ai.langchain4j.service.model.XiaozhiAgentRegistry;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import org.springframework.http.MediaType;
+import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -32,15 +34,22 @@ public class XiaozhiController {
         this.modelProperties = modelProperties;
     }
 
+    // SSE 流式返回，逐段推送，结束时发 done 事件
     @Operation(summary = "对话")
-    @PostMapping(value = "/chat", produces = "text/plain;charset=UTF-8")
-    public Flux<String> chat(@Valid @RequestBody ChatForm chatForm) {
+    @PostMapping(value = "/chat", produces = MediaType.TEXT_EVENT_STREAM_VALUE + ";charset=UTF-8")
+    public Flux<ServerSentEvent<String>> chat(@Valid @RequestBody ChatForm chatForm) {
         Long userId = CurrentUser.id();
         // 会话必须属于当前用户，防止使用别人的 memoryId
         chatSessionService.ensureOwner(userId, chatForm.getMemoryId());
 
         String modelId = modelProperties.resolveModelId(chatForm.getModelId());
         XiaozhiAgent agent = agentRegistry.get(userId, modelId);
-        return agent.chat(chatForm.getMemoryId(), chatForm.getMessage());
+        return agent.chat(chatForm.getMemoryId(), chatForm.getMessage())
+                .map(chunk -> ServerSentEvent.builder(chunk).build())
+                .concatWithValues(ServerSentEvent.builder("[DONE]").event("done").build())
+                .onErrorResume(error -> Flux.just(ServerSentEvent
+                        .builder("生成回答失败，请重试")
+                        .event("error")
+                        .build()));
     }
 }
