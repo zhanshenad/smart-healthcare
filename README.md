@@ -180,9 +180,14 @@ $env:JWT_SECRET="至少32字节的随机字符串"
 $env:JAVA_HOME="C:\Program Files\Java\jdk-17"
 $env:Path="$env:JAVA_HOME\bin;$env:Path"
 
+# 必须：Windows + JDK 17 默认 GBK，Milvus BM25 中文分词按 UTF-8 解析，编码不对会让 Milvus 崩溃
+$env:JAVA_TOOL_OPTIONS="-Dfile.encoding=UTF-8"
+
 cd 后端代码\java-ai-langchain4j
 mvn spring-boot:run
 ```
+
+IDEA 里运行时，在 Run Configuration 的 VM options 里加同样的 `-Dfile.encoding=UTF-8`。启动时如果编码不是 UTF-8，程序会直接报错退出，不会等到第一次检索才把 Milvus 打崩。
 
 后端地址：
 

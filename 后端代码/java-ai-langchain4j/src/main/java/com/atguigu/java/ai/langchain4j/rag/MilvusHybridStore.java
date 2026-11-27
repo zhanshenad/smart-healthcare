@@ -56,9 +56,10 @@ public class MilvusHybridStore {
 
     @PostConstruct
     public void init() {
+        // 非 UTF-8 时 Milvus 的 jieba 分词会按 GBK 字节解析并崩溃，必须在启动阶段拦住
         if (!StandardCharsets.UTF_8.equals(Charset.defaultCharset())) {
-            log.warn("JVM 默认编码为 {}，BM25 中文检索需要 -Dfile.encoding=UTF-8",
-                    Charset.defaultCharset());
+            throw new IllegalStateException("JVM 默认编码为 " + Charset.defaultCharset()
+                    + "，BM25 中文检索会导致 Milvus 崩溃，请加 -Dfile.encoding=UTF-8 后重启");
         }
         ensureCollection();
     }
