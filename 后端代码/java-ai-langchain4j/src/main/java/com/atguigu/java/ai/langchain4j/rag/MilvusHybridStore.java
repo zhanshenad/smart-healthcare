@@ -21,6 +21,8 @@ import io.milvus.v2.service.vector.request.data.EmbeddedText;
 import io.milvus.v2.service.vector.request.data.FloatVec;
 import io.milvus.v2.service.vector.response.SearchResp;
 import jakarta.annotation.PostConstruct;
+import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -54,6 +56,10 @@ public class MilvusHybridStore {
 
     @PostConstruct
     public void init() {
+        if (!StandardCharsets.UTF_8.equals(Charset.defaultCharset())) {
+            log.warn("JVM 默认编码为 {}，BM25 中文检索需要 -Dfile.encoding=UTF-8",
+                    Charset.defaultCharset());
+        }
         ensureCollection();
     }
 

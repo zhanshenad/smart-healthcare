@@ -224,8 +224,8 @@ curl -X POST http://localhost:8080/medical/knowledge/ingest `
 
 重建索引时加 `-F "force=true"`，即使文件 hash 未变化也会重新切片和写入 Milvus。
 
-当前支持 `.md`、`.txt`、`.pdf`。PDF 默认使用 PDFBox 抽取文本；开启 MinerU 后优先走
-MinerU 转 Markdown，失败自动回退 PDFBox。
+当前支持 `.md`、`.txt`、`.pdf`。PDF 默认优先走 MinerU 转 Markdown，MinerU 不可用或
+解析失败时自动回退 PDFBox。
 
 ### RAG 检索流程
 
@@ -265,7 +265,17 @@ Milvus collection 使用 `text`、`dense`、`sparse` 三个核心字段，`text 
 
 ### MinerU 解析
 
-默认关闭，复杂 PDF / 扫描件可开启：
+PDF 解析默认优先走 MinerU，入库前先启动 MinerU 服务：
+
+```powershell
+docker start km-horizon-mineru
+# 首次创建
+docker run -d --name km-horizon-mineru -p 8000:8000 `
+  -v km-horizon_mineru-data:/root/.cache `
+  mineru:latest --host 0.0.0.0 --port 8000 --gpu-memory-utilization 0.5
+```
+
+后端默认配置已开启 MinerU，可用环境变量覆盖：
 
 ```powershell
 $env:MINERU_ENABLED="true"
@@ -399,7 +409,7 @@ MongoDB 使用 `27018`，避免与本机默认 `27017` 冲突。
 - `xiaozhi.rag.boost.department-weight`：科室精确匹配加分，默认 `0.05`
 - `xiaozhi.rag.boost.title-weight`：标题匹配加分，默认 `0.03`
 - `xiaozhi.rag.boost.official-weight`：官方 / 指南 / 规范文档加分，默认 `0.02`
-- `xiaozhi.rag.mineru.enabled`：是否启用 MinerU，默认 `false`
+- `xiaozhi.rag.mineru.enabled`：是否启用 MinerU，默认 `true`
 - `xiaozhi.rag.mineru.url`：MinerU API 地址，默认 `http://localhost:8000`
 - `xiaozhi.rag.mineru.backend`：MinerU 解析后端，默认 `pipeline`
 - `xiaozhi.rag.mineru.server-url`：`vlm-http-client` / `hybrid-http-client` 的后端地址，默认空

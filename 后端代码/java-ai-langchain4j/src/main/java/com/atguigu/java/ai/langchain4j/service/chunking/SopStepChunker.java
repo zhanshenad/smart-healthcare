@@ -29,10 +29,18 @@ public class SopStepChunker implements ChunkingStrategy {
             return true;
         }
         String heading = section.heading();
-        return (heading.contains("步骤") || heading.contains("流程") || heading.contains("操作"))
+        if ((heading.contains("步骤") || heading.contains("流程") || heading.contains("操作"))
                 && section.lines().stream()
                 .map(String::strip)
-                .anyMatch(line -> NUMBERED_STEP.matcher(line).matches());
+                .anyMatch(line -> NUMBERED_STEP.matcher(line).matches())) {
+            return true;
+        }
+
+        // 流程标题下用编号做小节，例如“门诊就诊流程 > 1.挂号”
+        String path = section.outlinePath() == null ? "" : section.outlinePath();
+        boolean flowPath = path.contains("步骤") || path.contains("流程") || path.contains("操作");
+        return flowPath && (NUMBERED_STEP.matcher(heading).matches()
+                || CHINESE_STEP.matcher(heading).matches());
     }
 
     @Override

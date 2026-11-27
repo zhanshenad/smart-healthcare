@@ -146,6 +146,23 @@ class StructureAwareChunkerTest {
     }
 
     @Test
+    void shouldChunkSopWhenNumberedHeadingsUnderFlow() {
+        List<TextSegment> chunks = chunk("""
+                # 门诊就诊流程
+                ## 1.挂号
+                通过公众号或自助机挂号。
+                ## 2.候诊
+                到诊区等待叫号。
+                """);
+
+        assertThat(chunks).hasSize(2);
+        assertThat(chunks).allSatisfy(chunk -> {
+            assertThat(chunk.metadata().getString("strategy")).isEqualTo("sop_steps");
+            assertThat(chunk.metadata().getString("role")).isEqualTo("step");
+        });
+    }
+
+    @Test
     void shouldCreateParentAndChildChunksForPolicy() {
         List<TextSegment> chunks = chunk("""
                 # 门诊管理制度
